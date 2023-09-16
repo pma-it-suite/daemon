@@ -9,17 +9,23 @@ pub mod os_ops {
     use std::sync::mpsc::Receiver;
     use std::sync::mpsc::TryRecvError;
     use std::{thread, time};
+    use std::io::Write;
 
     pub fn read_sys_data() -> String {
         unimplemented!();
+    }
+
+    fn post_and_flush(content: &str) {
+        println!("{}", content);
+        io::stdout().flush().unwrap();
     }
 
     pub fn poll_from_stdin() {
         let stdin_channel = spawn_stdin_channel();
         loop {
             match stdin_channel.try_recv() {
-                Ok(key) => println!("Received: {}", key),
-                Err(TryRecvError::Empty) => println!("Channel empty"),
+                Ok(key) => post_and_flush(&format!("Received: {}", key)),
+                Err(TryRecvError::Empty) => post_and_flush(&String::from("Channel empty")),
                 Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
             }
             sleep(1000);
