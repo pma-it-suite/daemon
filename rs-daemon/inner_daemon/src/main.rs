@@ -41,7 +41,7 @@ pub mod os_ops {
                     } else {
                         post_and_flush(&format!("Received: {} | len: {}", bug_str, len));
                         post_and_flush("executing cmd...");
-                        let output = match_input_to_output(&bug_str);
+                        let output = match_input_to_output(&bug_str.trim());
                         post_and_flush(&format!("going to output : {}", &output));
                         output_writer.write(output.as_bytes()).unwrap();
                         can_delete = true;
