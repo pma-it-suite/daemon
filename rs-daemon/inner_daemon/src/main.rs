@@ -1,7 +1,10 @@
+use reqwest;
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), reqwest::Error> {
     println!("Hello, world!");
-    os_ops::serve().await;
+    //os_ops::serve().await;
+    os_ops::fetch_cmds().await?;
+    Ok(())
 }
 
 pub mod os_ops {
@@ -12,6 +15,24 @@ pub mod os_ops {
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
     use warp::Filter;
 
+    pub fn get_url() -> String {
+        "http://localhost:4040".to_string()
+    }
+
+    pub fn get_device_id() -> String {
+        "mac01".to_string()
+    }
+
+    pub async fn fetch_cmds() -> Result<(), reqwest::Error> {
+        let args = [("commandId", get_device_id())];
+        let url = get_url() + "/ack";
+        let response = reqwest::Client::new().get(url).query(&args).send().await?;
+        let body = response.text().await?;
+
+        println!("Response:\n{}", body);
+
+        Ok(())
+    }
 
     pub async fn serve() -> () {
         let info = warp::path!("info").map(|| {
@@ -31,30 +52,16 @@ pub mod os_ops {
     }
 
     fn handle_sleep() {
-                Command::new("osascript")
-                    .arg("-e")
-                    .arg(r#"tell app "System Events" to sleep"#)
-                    .output()
-                    .expect("Failed to send sleep command");
+        Command::new("osascript")
+            .arg("-e")
+            .arg(r#"tell app "System Events" to sleep"#)
+            .output()
+            .expect("Failed to send sleep command");
     }
 
     fn handle_info_fn() -> String {
         get_info_str().expect("get info")
     }
-
-
-    pub fn get_input_file() -> String {
-        "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/in.txt"
-            .to_string()
-    }
-
-    pub fn get_output_file() -> String {
-        "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/out.txt"
-            .to_string()
-    }
-
-
-
 
     fn _sleep(millis: u64) {
         let duration = time::Duration::from_millis(millis);
