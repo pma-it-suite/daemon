@@ -11,6 +11,7 @@ pub mod os_ops {
     use std::io::Write;
     use std::io::{self, BufReader, BufWriter};
     use std::path::Path;
+    use std::process::Command;
     use std::{thread, time};
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
 
@@ -23,12 +24,15 @@ pub mod os_ops {
         let mut reader = get_buf_reader_handle().expect("should get buf reader handle");
         let mut output_writer =
             get_buf_writer_handle(get_output_file()).expect("should get output writer handle");
-        let _input_writer =
-            get_buf_writer_handle(get_input_file()).expect("should get input writer handle");
 
         let mut can_delete = true;
 
         loop {
+            if can_delete == false {
+                reader = BufReader::new(
+                    File::open(get_input_file()).expect("should be able to refresh buf"),
+                );
+            }
             let mut bug_str = String::new();
             match reader.read_to_string(&mut bug_str) {
                 Ok(len) => {
@@ -46,7 +50,16 @@ pub mod os_ops {
                         post_and_flush("executing cmd...");
                         let output = match_input_to_output(&bug_str.trim());
                         post_and_flush(&format!("going to output : {}", &output));
-                        output_writer.write(output.as_bytes()).unwrap();
+                        {
+                            let mut output_writer = BufWriter::new(
+                                File::create(get_output_file())
+                                    .expect("should be able to get writer"),
+                            );
+                            output_writer
+                                .write_all(output.as_bytes())
+                                .expect("should write out good");
+                            output_writer.flush().expect("should flush the output");
+                        }
                         can_delete = true;
                     }
                 }
@@ -60,6 +73,14 @@ pub mod os_ops {
         dbg!(&input);
         match input {
             "info" => get_info_str().unwrap(),
+            "sleep" => {
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(r#"tell app "System Events" to sleep"#)
+                    .output()
+                    .expect("Failed to send sleep command");
+                "sleep".to_string()
+            }
             "echo" => "echo".to_string(),
             _ => "none".to_string(),
         }
