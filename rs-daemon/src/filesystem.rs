@@ -3,13 +3,11 @@ use jfs;
 use serde_json;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::{self};
-use std::path::Path;
 use lazy_static::lazy_static;
 
 lazy_static! {
     /// This is an example for using doc comment attributes
-    static ref DB: jfs::Store = jfs::Store::new_with_cfg("/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/db.json",jfs::Config{ single: true, ..Default::default()}).expect("should be able to create db store");
+    static ref DB: jfs::Store = jfs::Store::new_with_cfg("/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/db.json",jfs::Config{ single: true, pretty: true, ..Default::default()}).expect("should be able to create db store");
 }
 
 pub fn make_process_file(data: ProcessData) -> FsResult<()> {
@@ -17,14 +15,21 @@ pub fn make_process_file(data: ProcessData) -> FsResult<()> {
     Ok(())
 }
 
-pub fn get_process() -> FsResult<ProcessData> {
-    let process = deserialize_from_file()?;
+pub struct Query<'a> {
+    _name: Option<&'a str>,
+    id: Option<&'a str>,
+}
+
+pub fn get_process(query: Query) -> FsResult<ProcessData> {
+    if query.id.is_none() {
+        panic!("must have id for query");
+        }
+    let process = deserialize_from_file(query.id.unwrap())?;
     Ok(process)
 }
 
-fn deserialize_from_file() -> FsResult<ProcessData> {
-    let contents = read_from_file()?;
-    let data = serde_json::from_str(&contents)?;
+fn deserialize_from_file(id: &str) -> FsResult<ProcessData> {
+    let data = DB.get::<ProcessData>(id)?;
     Ok(data)
 }
 
@@ -36,7 +41,7 @@ pub fn get_process_filepath() -> String {
     "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/target/debug/inner_daemon".to_string()
 }
 
-pub fn read_from_file() -> FsResult<String> {
+pub fn _read_from_file() -> FsResult<String> {
     let file_path_str = get_file_path();
     let mut contents = String::new();
 
@@ -44,16 +49,6 @@ pub fn read_from_file() -> FsResult<String> {
     file.read_to_string(&mut contents)?;
 
     Ok(contents)
-}
-
-fn get_or_create(file_path_str: &str) -> io::Result<File> {
-    let file_path = Path::new(file_path_str);
-
-    let file = match file_path.exists() {
-        true => File::open(file_path_str)?,
-        false => File::create(file_path_str)?,
-    };
-    Ok(file)
 }
 
 pub enum IOContent<'a> {

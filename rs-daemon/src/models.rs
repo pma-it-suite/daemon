@@ -6,8 +6,8 @@ pub type FsResult<T> = Result<T, std::io::Error>;
 #[derive(Serialize, Deserialize)]
 pub enum Status {
     Alive,
-    Dead,
-    Broken,
+    Dead(String),
+    Broken(String),
     Deploying,
 }
 
@@ -15,8 +15,8 @@ impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Status::Alive => write!(f, "Alive"),
-            Status::Dead => write!(f, "Dead"),
-            Status::Broken => write!(f, "Broken"),
+            Status::Dead(why) => write!(f, "Dead: {}", why),
+            Status::Broken(why) => write!(f, "Broken: {}", why),
             Status::Deploying => write!(f, "Deploying"),
         }
     }
@@ -24,8 +24,8 @@ impl fmt::Display for Status {
 
 #[derive(Serialize, Deserialize)]
 pub struct ProcessData {
-    pid: String,
-    status: Status,
+    pub pid: u32,
+    pub status: Status,
 }
 
 impl ProcessData {
