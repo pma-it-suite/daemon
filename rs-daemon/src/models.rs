@@ -3,7 +3,7 @@ use serde_json;
 use std::fmt;
 pub type FsResult<T> = Result<T, std::io::Error>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Status {
     Alive,
     Dead(String),
@@ -22,7 +22,7 @@ impl fmt::Display for Status {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ProcessData {
     pub pid: u32,
     pub status: Status,

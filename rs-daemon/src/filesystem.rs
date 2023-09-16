@@ -10,7 +10,7 @@ lazy_static! {
     static ref DB: jfs::Store = jfs::Store::new_with_cfg("/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/db.json",jfs::Config{ single: true, pretty: true, ..Default::default()}).expect("should be able to create db store");
 }
 
-pub fn make_process_file(data: ProcessData) -> FsResult<()> {
+pub fn save_process(data: &ProcessData) -> FsResult<()> {
     write_to_file(IOContent::Object(data))?;
     Ok(())
 }
@@ -53,7 +53,7 @@ pub fn _read_from_file() -> FsResult<String> {
 
 pub enum IOContent<'a> {
     Raw(&'a str),
-    Object(ProcessData)
+    Object(&'a ProcessData)
 }
 
 pub fn write_to_file(content: IOContent) -> FsResult<()> {
@@ -62,7 +62,7 @@ pub fn write_to_file(content: IOContent) -> FsResult<()> {
             let serialized_data: serde_json::Value = serde_json::from_str(data)?;
             DB.save(&serialized_data)?
         }
-        IOContent::Object(data) => DB.save(&data)?
+        IOContent::Object(data) => DB.save_with_id(data, &data.pid.to_string())?
     };
     Ok(())
 }

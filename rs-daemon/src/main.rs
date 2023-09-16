@@ -6,8 +6,8 @@ use std::time;
 fn main() {
     let mut process = keepalive_ops::start().expect("should be able to start keepalive");
     loop {
-        match keepalive_ops::get_status(process.pid) {
-            models::Status::Alive => {
+        match keepalive_ops::get_status(&process) {
+            Ok(models::Status::Alive) => {
                 println!("Sleeping...");
                 sleep(10000);
             }
@@ -20,18 +20,8 @@ fn main() {
     }
 }
 
-pub mod api {
-    use crate::keepalive_ops;
-
-    pub fn _serve() -> () {
-        let process = keepalive_ops::start().expect("should be able to start keepalive");
-        let status = keepalive_ops::get_status(process.pid);
-        dbg!(status);
-    }
-}
-
 pub mod keepalive_ops {
-    use crate::filesystem::get_process_filepath;
+    use crate::filesystem::{self, get_process_filepath};
     use crate::models::{FsResult, ProcessData, Status};
     use std::process::Command;
 
@@ -56,14 +46,21 @@ pub mod keepalive_ops {
             }
         };
 
-        Ok(ProcessData {
+        let process = ProcessData {
             pid: child.id(),
-            status,
-        })
+            status: status.clone(),
+        };
+
+        if status == Status::Alive {
+            filesystem::save_process(&process)?;
+        }
+
+        Ok(process)
     }
     pub fn end() {}
 
-    pub fn get_status(pid: u32) -> Status {
+    pub fn get_status(process: &ProcessData) -> KeepAliveResult<Status> {
+        let pid = process.pid;
         let output = Command::new("ps")
             .arg("-p")
             .arg(pid.to_string())
@@ -72,16 +69,7 @@ pub mod keepalive_ops {
             .output()
             .expect("Failed to execute command");
 
-        /*
-        let s: &str = "42";
-
-        match s.parse::<usize>() {
-        Ok(n) => println!("Parsed number: {}", n),
-        Err(e) => println!("Failed to parse: {}", e),
-        }
-        */
-
-        let status = {
+        let output_str = {
             if output.status.success() {
                 Some(String::from_utf8_lossy(&output.stdout).to_string())
             } else {
@@ -89,7 +77,7 @@ pub mod keepalive_ops {
             }
         };
 
-        match status {
+        let status = match output_str {
             Some(data) => {
                 if data.contains("defunct") {
                     println!("process dead: {}", data);
@@ -103,7 +91,13 @@ pub mod keepalive_ops {
                 println!("No process with PID {} found.", pid);
                 Status::Dead("no process".to_string())
             }
+        };
+
+        if status != process.status {
+            let new_process_data = ProcessData{pid, status: status.clone()};
+            filesystem::save_process(&new_process_data)?;
         }
+        Ok(status)
     }
 }
 
