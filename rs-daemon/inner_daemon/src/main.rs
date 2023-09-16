@@ -1,6 +1,7 @@
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("Hello, world!");
-    os_ops::poll_from_stdin();
+    os_ops::serve().await;
 }
 
 pub mod os_ops {
@@ -14,10 +15,40 @@ pub mod os_ops {
     use std::process::Command;
     use std::{thread, time};
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
+    use warp::Filter;
 
     fn post_and_flush(content: &str) {
         println!("{}", content);
         io::stdout().flush().unwrap();
+    }
+
+    pub async fn serve() -> () {
+        let info = warp::path!("info").map(|| {
+            let info_str = handle_info_fn();
+            dbg!(&info_str);
+            warp::reply::html(info_str)
+        });
+
+        let sleep = warp::path!("sleep").map(|| {
+            handle_sleep();
+            warp::reply::html("sleep")
+        });
+        let echo = warp::path!("echo").map(|| warp::reply::html("echo"));
+        let routes = info.or(echo).or(sleep);
+
+        warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    }
+
+    fn handle_sleep() {
+                Command::new("osascript")
+                    .arg("-e")
+                    .arg(r#"tell app "System Events" to sleep"#)
+                    .output()
+                    .expect("Failed to send sleep command");
+    }
+
+    fn handle_info_fn() -> String {
+        get_info_str().expect("get info")
     }
 
     pub fn poll_from_stdin() {
