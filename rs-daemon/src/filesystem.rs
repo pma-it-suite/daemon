@@ -24,7 +24,7 @@ fn get_file_path() -> String {
     "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/test.txt".to_string()
 }
 
-fn read_from_file() -> FsResult<String> {
+pub fn read_from_file() -> FsResult<String> {
     let file_path_str = get_file_path();
     let mut contents = String::new();
 
@@ -34,7 +34,7 @@ fn read_from_file() -> FsResult<String> {
     Ok(contents)
 }
 
-fn write_to_file(content: &str) -> FsResult<()> {
+pub fn write_to_file(content: &str) -> FsResult<()> {
     let file_path_str = get_file_path();
     let file_path = Path::new(&file_path_str);
 
