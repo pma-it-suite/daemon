@@ -1,8 +1,9 @@
+use crate::models::{FsResult, ProcessData};
+use serde_json;
 use std::fs::File;
 use std::io::prelude::*;
+use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
-use crate::models::{ProcessData, FsResult};
-use serde_json;
 
 pub fn make_process_file(data: ProcessData) -> FsResult<()> {
     write_to_file(&data.to_output())?;
@@ -20,6 +21,20 @@ fn deserialize_from_file() -> FsResult<ProcessData> {
     Ok(data)
 }
 
+pub fn get_process_filepath() -> String {
+    "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/target/debug/inner_daemon".to_string()
+}
+
+pub fn get_input_filepath() -> String {
+    "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/in.txt"
+        .to_string()
+}
+
+pub fn get_output_filepath() -> String {
+    "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/out.txt"
+        .to_string()
+}
+
 fn get_file_path() -> String {
     "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/test.txt".to_string()
 }
@@ -32,6 +47,26 @@ pub fn read_from_file() -> FsResult<String> {
     file.read_to_string(&mut contents)?;
 
     Ok(contents)
+}
+
+pub fn get_buf_reader_handle(filepath: &str) -> io::Result<BufReader<File>> {
+    let file = get_or_create(filepath)?;
+    Ok(BufReader::new(file))
+}
+
+pub fn get_buf_writer_handle(filepath: &str) -> io::Result<BufWriter<File>> {
+    let file = get_or_create(filepath)?;
+    Ok(BufWriter::new(file))
+}
+
+fn get_or_create(file_path_str: &str) -> io::Result<File> {
+    let file_path = Path::new(file_path_str);
+
+    let file = match file_path.exists() {
+        true => File::open(file_path_str)?,
+        false => File::create(file_path_str)?,
+    };
+    Ok(file)
 }
 
 pub fn write_to_file(content: &str) -> FsResult<()> {

@@ -10,9 +10,9 @@ pub mod os_ops {
     use std::io::Read;
     use std::io::Write;
     use std::io::{self, BufReader, BufWriter};
+    use std::path::Path;
     use std::{thread, time};
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
-    use std::path::Path;
 
     fn post_and_flush(content: &str) {
         println!("{}", content);
@@ -21,8 +21,10 @@ pub mod os_ops {
 
     pub fn poll_from_stdin() {
         let mut reader = get_buf_reader_handle().expect("should get buf reader handle");
-        let mut output_writer = get_buf_writer_handle(get_output_file()).expect("should get output writer handle");
-        let _input_writer = get_buf_writer_handle(get_input_file()).expect("should get input writer handle");
+        let mut output_writer =
+            get_buf_writer_handle(get_output_file()).expect("should get output writer handle");
+        let _input_writer =
+            get_buf_writer_handle(get_input_file()).expect("should get input writer handle");
 
         let mut can_delete = true;
 
@@ -33,7 +35,8 @@ pub mod os_ops {
                     if len == 0 {
                         println!("can to delete...: {}", &can_delete);
                         if can_delete {
-                            File::create(get_input_file()).expect("should be able to wipe input file");
+                            File::create(get_input_file())
+                                .expect("should be able to wipe input file");
                             // input_writer.write_all("".as_bytes()).unwrap();
                             // input_writer.flush().unwrap();
                             can_delete = false;
@@ -46,7 +49,7 @@ pub mod os_ops {
                         output_writer.write(output.as_bytes()).unwrap();
                         can_delete = true;
                     }
-                },
+                }
                 Err(err) => panic!("Channel disconnected, {:#?}", err),
             }
             sleep(1000);
@@ -62,12 +65,14 @@ pub mod os_ops {
         }
     }
 
-    fn get_input_file() -> String {
-        "in.txt".to_string()
+    pub fn get_input_file() -> String {
+        "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/in.txt"
+            .to_string()
     }
 
-    fn get_output_file() -> String {
-        "out.txt".to_string()
+    pub fn get_output_file() -> String {
+        "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/out.txt"
+            .to_string()
     }
 
     fn get_buf_reader_handle() -> io::Result<BufReader<File>> {
