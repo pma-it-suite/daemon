@@ -9,7 +9,7 @@ fn main() {
 pub mod keepalive_ops {
 
     use std::io::prelude::*;
-    use std::io::BufReader;
+    use std::io::{BufReader, BufWriter};
     use std::io::Read;
     use std::process::{Command, Stdio};
 
@@ -30,7 +30,8 @@ pub mod keepalive_ops {
         // Assuming you want to write to the child's stdin.
         {
             let child_stdin = child.stdin.as_mut().expect("Failed to get stdin handle.");
-            child_stdin
+            let writer = BufWriter::new(child_stdout);
+            writer
                 .write_all(b"Your data to child")
                 .expect("Failed to write to stdin.");
         }
