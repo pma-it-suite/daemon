@@ -1,19 +1,94 @@
 use reqwest;
+use std::{thread, time};
+
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
-    println!("Hello, world!");
-    //os_ops::serve().await;
-    os_ops::fetch_cmds().await?;
-    Ok(())
+    println!("running inner daemon...");
+    loop {
+        os_ops::get_and_run_cmd().await?;
+        sleep_blocking(5000);
+    }
 }
 
 pub mod os_ops {
     use serde::{Deserialize, Serialize};
     use serde_json;
     use std::process::Command;
-    use std::{thread, time};
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
+    use tokio::time::{sleep, Duration};
     use warp::Filter;
+    use thiserror::Error;
+
+
+    pub async fn get_and_run_cmd() -> Result<(), reqwest::Error> {
+        let raw_cmd = fetch_cmds().await?;
+        let cmd = InputCommands::from(&raw_cmd);
+        if let Some(val) = run_cmd(cmd).await.expect("run cmd ok") {
+            println!("{}", val);
+        }
+
+        Ok(())
+    }
+
+    pub async fn run_cmd(cmd: InputCommands) -> Result<Option<String>, HandlerError> {
+        match cmd {
+            InputCommands::Info => Ok(Some(get_info_str()?)),
+            InputCommands::Sleep => {
+                {
+                    sleep(Duration::from_secs(1)).await;
+                    handle_sleep();
+                }
+                Ok(None)
+            }
+            InputCommands::Health => Ok(Some("ok".to_string())),
+            InputCommands::ShellCmd(cmd_str) => handle_shell_cmd(cmd_str),
+        }
+    }
+
+    #[derive(Error, Debug)]
+    pub enum HandlerError {
+        #[error("io error")]
+        IoError(#[from] std::io::Error),
+        #[error("serde error")]
+        SerError(#[from] serde_json::Error),
+        #[error("unknown error")]
+        Unknown,
+        #[error("unknown error")]
+        DecodingError(#[from] std::string::FromUtf8Error),
+    }
+
+    fn handle_shell_cmd(cmd_str: String) -> Result<Option<String>, HandlerError> {
+        let mut args = cmd_str.split_whitespace();
+        let cmd_name = args.next().unwrap();
+        let cmd = args
+            .fold(&mut Command::new(cmd_name), |c, arg| c.arg(arg))
+            .output()?;
+        Ok(Some(String::from_utf8(cmd.stdout)?))
+    }
+
+    pub enum InputCommands {
+        Info,
+        Sleep,
+        Health,
+        ShellCmd(String),
+    }
+
+    impl InputCommands {
+        pub fn from(raw_input: &RawInputCommand) -> Self {
+            match (raw_input.0.as_str(), {
+                match &raw_input.1 {
+                    Some(val) => Some(val.as_str()),
+                    None => None,
+                }
+            }) {
+                ("info", None) => Self::Info,
+                ("sleep", None) => Self::Sleep,
+                ("health", None) => Self::Health,
+                ("shellCmd", Some(args)) => Self::ShellCmd(args.to_string()),
+                _ => panic!("not implemented for input: {:#?}", &raw_input),
+            }
+        }
+    }
 
     pub fn get_url() -> String {
         "http://localhost:4040".to_string()
@@ -23,15 +98,36 @@ pub mod os_ops {
         "mac01".to_string()
     }
 
-    pub async fn fetch_cmds() -> Result<(), reqwest::Error> {
-        let args = [("commandId", get_device_id())];
-        let url = get_url() + "/ack";
+    pub type RawInputCommand = (String, Option<String>);
+
+    pub async fn fetch_cmds() -> Result<RawInputCommand, reqwest::Error> {
+        let args = [("deviceId", get_device_id())];
+        let url = get_url() + "/fetch";
         let response = reqwest::Client::new().get(url).query(&args).send().await?;
         let body = response.text().await?;
-
         println!("Response:\n{}", body);
 
-        Ok(())
+        let json_value: serde_json::Value =
+            serde_json::from_str(&body).expect("Failed to parse JSON");
+
+        // Extract the "name" key's value as a string
+        let cmd = (
+            json_value["name"]
+                .as_str()
+                .expect("no name key in json")
+                .to_string(),
+            {
+                let val = json_value["args"].as_str().expect("no args key in json");
+
+                if val.len() == 0 {
+                    None
+                } else {
+                    Some(val.to_string())
+                }
+            },
+        );
+
+        Ok(cmd)
     }
 
     pub async fn serve() -> () {
@@ -61,11 +157,6 @@ pub mod os_ops {
 
     fn handle_info_fn() -> String {
         get_info_str().expect("get info")
-    }
-
-    fn _sleep(millis: u64) {
-        let duration = time::Duration::from_millis(millis);
-        thread::sleep(duration);
     }
 
     #[derive(Serialize, Deserialize)]
@@ -111,4 +202,9 @@ pub mod os_ops {
         let json_str = serde_json::to_string(&system_info)?;
         Ok(format!("{}", json_str))
     }
+}
+
+fn sleep_blocking(millis: u64) {
+    let duration = time::Duration::from_millis(millis);
+    thread::sleep(duration);
 }

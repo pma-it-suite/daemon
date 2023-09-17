@@ -10,8 +10,10 @@ def fetch_cmds():
     if device_id is None:
         return jsonify({'error': 'deviceId parameter is required'}), 400
 
+    name = 'health'
+    args = " ".join(['open .'])
     # Return a simple JSON object
-    return jsonify({'id': device_id, 'name': 'Command Name for ' + device_id})
+    return jsonify({'id': device_id, 'name': name, 'args': args})
 
 
 @app.route('/ack', methods=['GET'])
@@ -27,4 +29,4 @@ def ack():
 
 
 if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=4040)
+    app.run(host='127.0.0.1', port=4040, debug=True)
