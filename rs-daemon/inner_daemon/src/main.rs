@@ -1,5 +1,4 @@
-use os_ops::HandlerError;
-use std::{thread, time};
+use os_ops::HandlerError; use std::{thread, time};
 // use std::time::{SystemTime, UNIX_EPOCH};
 
 const WAIT_LONG: u64 = 4000;

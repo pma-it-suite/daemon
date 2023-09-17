@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 
 lazy_static! {
     /// This is an example for using doc comment attributes
-    static ref DB: jfs::Store = jfs::Store::new_with_cfg("/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/db.json",jfs::Config{ single: true, pretty: true, ..Default::default()}).expect("should be able to create db store");
+    static ref DB: jfs::Store = jfs::Store::new_with_cfg("/tmp/rs-daemon/db.json",jfs::Config{ single: true, pretty: true, ..Default::default()}).expect("should be able to create db store");
 }
 
 pub fn save_process(data: &ProcessData) -> FsResult<()> {
@@ -34,11 +34,7 @@ fn deserialize_from_file(id: &str) -> FsResult<ProcessData> {
 }
 
 fn get_file_path() -> String {
-    "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/db.json".to_string()
-}
-
-pub fn get_process_filepath() -> String {
-    "/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/target/debug/inner_daemon".to_string()
+    "/tmp/rs-daemon/db.json".to_string()
 }
 
 pub fn _read_from_file() -> FsResult<String> {

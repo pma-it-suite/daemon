@@ -27,32 +27,13 @@ pub mod keepalive_ops {
     use std::path::Path;
     use std::process::Command;
 
-    const SECONDARY_BINARY: &[u8] = include_bytes!("/Users/felipearce/Desktop/projects/shellhacks2023/daemon/rs-daemon/inner_daemon/target/release/inner_daemon");
-
-    fn get_tmp_filepath() -> String {
-        "/tmp/inner_daemon".to_string()
-    }
-
-    fn ensure_secondary_binary_exists() -> Result<(), std::io::Error> {
-        let tmp_path = get_tmp_filepath();
-
-        if !Path::new(&tmp_path).exists() {
-            fs::write(&tmp_path, SECONDARY_BINARY)?;
-            // You may need to set executable permissions on Unix-like OSes
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let permissions = fs::Permissions::from_mode(0o755);
-                fs::set_permissions(&tmp_path, permissions)?;
-            }
-        }
-        println!("made cmd");
-        Ok(())
-    }
     pub type KeepAliveResult<T> = FsResult<T>;
 
+    fn get_tmp_filepath() -> String {
+        "/usr/local/bin/inner_daemon".to_string()
+    }
+
     pub fn start() -> KeepAliveResult<ProcessData> {
-        ensure_secondary_binary_exists()?;
         let filepath = get_tmp_filepath();
         let mut child = Command::new(filepath)
             .spawn()
