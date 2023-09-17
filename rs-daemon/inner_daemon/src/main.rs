@@ -1,13 +1,38 @@
 use os_ops::HandlerError;
 use std::{thread, time};
+// use std::time::{SystemTime, UNIX_EPOCH};
 
 const WAIT_LONG: u64 = 4000;
 const WAIT_SHORT: u64 = 50;
+
+/*
+fn get_secs_since() -> u64 {
+    let now = SystemTime::now();
+    let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    since_the_epoch.as_secs()
+}
+
+fn should_run_or_wait_millis() -> Option<u64> {
+    let secs_since = get_secs_since() % (WAIT_LONG / 1000);
+    if secs_since != 0 {
+        Some(secs_since)
+    } else {
+        None
+    }
+}
+*/
 
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
     println!("running inner daemon...");
     loop {
+        /*
+        if let Some(val) = should_run_or_wait_millis() {
+            println!("sleeping for {} millis", val);
+            sleep_blocking(val);
+        }
+        */
+
         if let Err(err) = os_ops::get_and_run_cmd().await {
             dbg!(&err);
             if matches!(&err, HandlerError::NotFound) {
@@ -111,12 +136,12 @@ pub mod os_ops {
     }
 
     pub fn get_url() -> String {
-        //"http://localhost:4040".to_string()
         "http://172.178.91.48:5001".to_string()
     }
 
     pub fn get_device_id() -> String {
-        "b696b18b-c79f-48b7-b2d2-030d4c256402".to_string()
+        // "b696b18b-c79f-48b7-b2d2-030d4c256402".to_string()
+        std::env::var("ITS_DEVICE_ID").unwrap_or("b696b18b-c79f-48b7-b2d2-030d4c256402".to_string())
     }
 
     pub type RawInputCommand = (String, Option<String>);
@@ -165,15 +190,6 @@ pub mod os_ops {
         pub name: String,
         pub args: String,
     }
-
-    /*
-    return jsonify({
-    'status': command['status'],
-    'command_id': str(command['_id']),
-    'name': command['name'],
-    'args': command.get('args', '') if command.get('args') else ''
-    }), 200
-    */
 
     pub async fn update_status_for_cmd(cmd: &FullCmd) -> Result<(), reqwest::Error> {
         let args = [
