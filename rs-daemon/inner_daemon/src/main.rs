@@ -1,12 +1,24 @@
-use reqwest;
+use os_ops::HandlerError;
 use std::{thread, time};
 
+const WAIT_LONG: u64 = 4000;
+const WAIT_SHORT: u64 = 50;
+
 #[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+async fn main() -> Result<(), HandlerError> {
     println!("running inner daemon...");
     loop {
-        os_ops::get_and_run_cmd().await?;
-        sleep_blocking(5000);
+        if let Err(err) = os_ops::get_and_run_cmd().await {
+            dbg!(&err);
+            if matches!(&err, HandlerError::NotFound) {
+                println!("no cmds found, sleeping...");
+                sleep_blocking(WAIT_LONG);
+            } else {
+                println!("returning err: {}", &err);
+                return Err(err);
+            }
+        }
+        sleep_blocking(WAIT_SHORT);
     }
 }
 
@@ -15,22 +27,24 @@ pub mod os_ops {
     use serde_json;
     use std::process::Command;
     use sys_info::{cpu_num, cpu_speed, loadavg, mem_info, os_release, os_type};
+    use thiserror::Error;
     use tokio::time::{sleep, Duration};
     use warp::Filter;
-    use thiserror::Error;
 
-
-    pub async fn get_and_run_cmd() -> Result<(), reqwest::Error> {
-        let raw_cmd = fetch_cmds().await?;
-        let cmd = InputCommands::from(&raw_cmd);
-        if let Some(val) = run_cmd(cmd).await.expect("run cmd ok") {
+    pub async fn get_and_run_cmd() -> Result<(), HandlerError> {
+        let mut full_cmd = fetch_cmds().await?;
+        full_cmd.status = JsonStatus::InProgress;
+        update_status_for_cmd(&full_cmd).await?;
+        if let Some(val) = run_cmd(&full_cmd.cmd).await.expect("run cmd ok") {
             println!("{}", val);
+            full_cmd.status = JsonStatus::Finished;
+            update_status_for_cmd(&full_cmd).await?;
         }
 
         Ok(())
     }
 
-    pub async fn run_cmd(cmd: InputCommands) -> Result<Option<String>, HandlerError> {
+    pub async fn run_cmd(cmd: &InputCommands) -> Result<Option<String>, HandlerError> {
         match cmd {
             InputCommands::Info => Ok(Some(get_info_str()?)),
             InputCommands::Sleep => {
@@ -49,15 +63,21 @@ pub mod os_ops {
     pub enum HandlerError {
         #[error("io error")]
         IoError(#[from] std::io::Error),
+        #[error("reqwest error")]
+        ReqwestError(#[from] reqwest::Error),
+        #[error("api client error")]
+        ApiError,
         #[error("serde error")]
         SerError(#[from] serde_json::Error),
         #[error("unknown error")]
         Unknown,
         #[error("unknown error")]
         DecodingError(#[from] std::string::FromUtf8Error),
+        #[error("404")]
+        NotFound,
     }
 
-    fn handle_shell_cmd(cmd_str: String) -> Result<Option<String>, HandlerError> {
+    fn handle_shell_cmd(cmd_str: &str) -> Result<Option<String>, HandlerError> {
         let mut args = cmd_str.split_whitespace();
         let cmd_name = args.next().unwrap();
         let cmd = args
@@ -91,45 +111,130 @@ pub mod os_ops {
     }
 
     pub fn get_url() -> String {
-        "http://localhost:4040".to_string()
+        //"http://localhost:4040".to_string()
+        "http://172.178.91.48:5001".to_string()
     }
 
     pub fn get_device_id() -> String {
-        "mac01".to_string()
+        "b696b18b-c79f-48b7-b2d2-030d4c256402".to_string()
     }
 
     pub type RawInputCommand = (String, Option<String>);
 
-    pub async fn fetch_cmds() -> Result<RawInputCommand, reqwest::Error> {
-        let args = [("deviceId", get_device_id())];
-        let url = get_url() + "/fetch";
+    pub enum JsonStatus {
+        Pending,
+        InProgress,
+        Finished,
+        Failed,
+    }
+
+    impl JsonStatus {
+        pub fn from(raw: &str) -> Self {
+            match raw {
+                "pending" => Self::Pending,
+                "in_progress" => Self::InProgress,
+                "finished" => Self::Finished,
+                "failed" => Self::Failed,
+                _ => unimplemented!(),
+            }
+        }
+
+        pub fn to_output(&self) -> String {
+            match self {
+                Self::Pending => "pending",
+                Self::InProgress => "in_progress",
+                Self::Finished => "finished",
+                Self::Failed => "failed",
+            }
+            .to_string()
+        }
+    }
+
+    type Id = String;
+
+    pub struct FullCmd {
+        pub status: JsonStatus,
+        pub id: Id,
+        pub cmd: InputCommands,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct JsonCmd {
+        pub status: String,
+        pub command_id: Id,
+        pub name: String,
+        pub args: String,
+    }
+
+    /*
+    return jsonify({
+    'status': command['status'],
+    'command_id': str(command['_id']),
+    'name': command['name'],
+    'args': command.get('args', '') if command.get('args') else ''
+    }), 200
+    */
+
+    pub async fn update_status_for_cmd(cmd: &FullCmd) -> Result<(), reqwest::Error> {
+        let args = [
+            ("command_id", cmd.id.clone()),
+            ("status", cmd.status.to_output()),
+        ];
+        let url = get_url() + "/commands/status";
+        reqwest::Client::new()
+            .patch(url)
+            .query(&args)
+            .send()
+            .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_cmds() -> Result<FullCmd, HandlerError> {
+        let args = [("device_id", get_device_id())];
+        let url = get_url() + "/commands/recent";
         let response = reqwest::Client::new().get(url).query(&args).send().await?;
+
+        if response.status().is_client_error() || response.status().is_server_error() {
+            match response.status() {
+                reqwest::StatusCode::NOT_FOUND => {
+                    // Handle 404 specifically here if needed
+                    return Err(HandlerError::NotFound);
+                }
+                s if s.is_client_error() => {
+                    // Handle general 4xx errors here
+                    return Err(HandlerError::ApiError);
+                }
+                s if s.is_server_error() => {
+                    // Handle general 5xx errors here
+                    return Err(HandlerError::ApiError);
+                }
+                _ => {
+                    // This should never hit since we're already inside the if condition checking for errors,
+                    // but it's good to have a catch-all.
+                    return Err(HandlerError::Unknown);
+                }
+            }
+        }
+
         let body = response.text().await?;
         println!("Response:\n{}", body);
 
-        let json_value: serde_json::Value =
-            serde_json::from_str(&body).expect("Failed to parse JSON");
+        let json_value = serde_json::from_str::<JsonCmd>(&body).expect("Failed to parse JSON");
 
         // Extract the "name" key's value as a string
-        let cmd = (
-            json_value["name"]
-                .as_str()
-                .expect("no name key in json")
-                .to_string(),
-            {
-                let val = json_value["args"].as_str().expect("no args key in json");
-
-                if val.len() == 0 {
+        Ok(FullCmd {
+            status: JsonStatus::from(&json_value.status),
+            id: json_value.command_id,
+            cmd: InputCommands::from(&(json_value.name, {
+                let val = json_value.args;
+                if val.is_empty() {
                     None
                 } else {
-                    Some(val.to_string())
+                    Some(val)
                 }
-            },
-        );
-
-        Ok(cmd)
+            })),
+        })
     }
-
     pub async fn serve() -> () {
         let info = warp::path!("info").map(|| {
             let info_str = handle_info_fn();
