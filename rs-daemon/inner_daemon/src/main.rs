@@ -1,45 +1,26 @@
-use os_ops::HandlerError; use std::{thread, time};
-// use std::time::{SystemTime, UNIX_EPOCH};
+use os_ops::{FullCmd, JsonStatus, InputCommands, HandlerError};
+use std::{thread, time};
 
-const WAIT_LONG: u64 = 4000;
-const WAIT_SHORT: u64 = 50;
-
-/*
-fn get_secs_since() -> u64 {
-    let now = SystemTime::now();
-    let since_the_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
-    since_the_epoch.as_secs()
-}
-
-fn should_run_or_wait_millis() -> Option<u64> {
-    let secs_since = get_secs_since() % (WAIT_LONG / 1000);
-    if secs_since != 0 {
-        Some(secs_since)
-    } else {
-        None
-    }
-}
-*/
+const WAIT_LONG: u64 = 2000;
+const WAIT_SHORT: u64 = 2000;
 
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
     println!("running inner daemon...");
     loop {
-        /*
-        if let Some(val) = should_run_or_wait_millis() {
-            println!("sleeping for {} millis", val);
-            sleep_blocking(val);
-        }
-        */
-
         if let Err(err) = os_ops::get_and_run_cmd().await {
             dbg!(&err);
             if matches!(&err, HandlerError::NotFound) {
                 println!("no cmds found, sleeping...");
                 sleep_blocking(WAIT_LONG);
-            } else {
+            } else if matches!(&err, HandlerError::CmdError(_)) {
                 println!("returning err: {}", &err);
-                return Err(err);
+                if let HandlerError::CmdError(cmd_id) = err {
+                    let cmd = FullCmd { status: JsonStatus::Failed, id: cmd_id.to_string(), cmd: InputCommands::Info};
+                    os_ops::update_status_for_cmd(&cmd).await?;
+                }
+            } else {
+                println!("printing err: {}", &err);
             }
         }
         sleep_blocking(WAIT_SHORT);
@@ -59,7 +40,14 @@ pub mod os_ops {
         let mut full_cmd = fetch_cmds().await?;
         full_cmd.status = JsonStatus::InProgress;
         update_status_for_cmd(&full_cmd).await?;
-        if let Some(val) = run_cmd(&full_cmd.cmd).await.expect("run cmd ok") {
+
+        let resp = run_cmd(&full_cmd.cmd).await;
+        if let Err(err) = resp {
+            println!("issue with {:#?} : {}", &full_cmd, &err);
+            return Err(HandlerError::CmdError(full_cmd.id));
+        };
+
+        if let Some(val) = resp.unwrap() {
             println!("{}", val);
             full_cmd.status = JsonStatus::Finished;
             update_status_for_cmd(&full_cmd).await?;
@@ -99,6 +87,10 @@ pub mod os_ops {
         DecodingError(#[from] std::string::FromUtf8Error),
         #[error("404")]
         NotFound,
+        #[error("cmd error")]
+        CmdError(Id),
+        #[error("parse cmd error")]
+        ParseError(String),
     }
 
     fn handle_shell_cmd(cmd_str: &str) -> Result<Option<String>, HandlerError> {
@@ -110,6 +102,7 @@ pub mod os_ops {
         Ok(Some(String::from_utf8(cmd.stdout)?))
     }
 
+    #[derive(Debug)]
     pub enum InputCommands {
         Info,
         Sleep,
@@ -118,33 +111,41 @@ pub mod os_ops {
     }
 
     impl InputCommands {
-        pub fn from(raw_input: &RawInputCommand) -> Self {
+        pub fn from(raw_input: &RawInputCommand) -> Result<Self, HandlerError> {
             match (raw_input.0.as_str(), {
                 match &raw_input.1 {
                     Some(val) => Some(val.as_str()),
                     None => None,
                 }
             }) {
-                ("info", None) => Self::Info,
-                ("sleep", None) => Self::Sleep,
-                ("health", None) => Self::Health,
-                ("shellCmd", Some(args)) => Self::ShellCmd(args.to_string()),
-                _ => panic!("not implemented for input: {:#?}", &raw_input),
+                ("info", None) => Ok(Self::Info),
+                ("sleep", None) => Ok(Self::Sleep),
+                ("health", None) => Ok(Self::Health),
+                ("shellCmd", Some(args)) => Ok(Self::ShellCmd(args.to_string())),
+                ("shellCmd", None) => Err(HandlerError::ParseError(format!(
+                    "no args for cmd: {:#?}",
+                    &raw_input
+                ))),
+                _ => Err(HandlerError::ParseError(format!(
+                    "not implemented for input: {:#?}",
+                    &raw_input
+                ))),
             }
         }
     }
 
     pub fn get_url() -> String {
-        "http://172.178.91.48:5001".to_string()
+        "https://its.kdns.ooo:5001".to_string()
     }
 
     pub fn get_device_id() -> String {
         // "b696b18b-c79f-48b7-b2d2-030d4c256402".to_string()
-        std::env::var("ITS_DEVICE_ID").unwrap_or("b696b18b-c79f-48b7-b2d2-030d4c256402".to_string())
+        std::env::var("ITS_DEVICE_ID_X").unwrap_or("b696b18b-c79f-48b7-b2d2-030d4c256402".to_string())
     }
 
     pub type RawInputCommand = (String, Option<String>);
 
+    #[derive(Debug)]
     pub enum JsonStatus {
         Pending,
         InProgress,
@@ -176,13 +177,14 @@ pub mod os_ops {
 
     type Id = String;
 
+    #[derive(Debug)]
     pub struct FullCmd {
         pub status: JsonStatus,
         pub id: Id,
         pub cmd: InputCommands,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
     pub struct JsonCmd {
         pub status: String,
         pub command_id: Id,
@@ -196,6 +198,9 @@ pub mod os_ops {
             ("status", cmd.status.to_output()),
         ];
         let url = get_url() + "/commands/status";
+        println!("updating...");
+        dbg!(&url);
+        dbg!(&args);
         reqwest::Client::new()
             .patch(url)
             .query(&args)
@@ -237,17 +242,26 @@ pub mod os_ops {
         let json_value = serde_json::from_str::<JsonCmd>(&body).expect("Failed to parse JSON");
 
         // Extract the "name" key's value as a string
-        Ok(FullCmd {
-            status: JsonStatus::from(&json_value.status),
-            id: json_value.command_id,
-            cmd: InputCommands::from(&(json_value.name, {
+        let input_resp = InputCommands::from(&(json_value.name, {
                 let val = json_value.args;
                 if val.is_empty() {
                     None
                 } else {
                     Some(val)
                 }
-            })),
+            }));
+
+        let command_id = json_value.command_id;
+
+        if let Err(HandlerError::ParseError(val)) = input_resp {
+            println!("parse error on get cmds: {}", val);
+            return Err(HandlerError::CmdError(command_id));
+        }
+
+        Ok(FullCmd {
+            status: JsonStatus::from(&json_value.status),
+            id: command_id,
+            cmd: input_resp?,
         })
     }
     pub async fn serve() -> () {
