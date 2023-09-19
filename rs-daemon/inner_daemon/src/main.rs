@@ -82,7 +82,7 @@ pub mod os_ops {
     }
 
     pub fn get_url() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.id.unwrap_or("https://its.kdns.ooo:5001".to_string()))
+        Ok(filesystem::deserialize_from_file()?.endpoint.unwrap_or("https://its.kdns.ooo:5001".to_string()))
     }
 
     pub fn get_device_id() -> Result<String, HandlerError> {
@@ -90,7 +90,29 @@ pub mod os_ops {
     }
 
     pub fn get_user_id() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.id.unwrap())
+        Ok(filesystem::deserialize_from_file()?.user_id.unwrap())
+    }
+
+    pub fn get_user_secret() -> Result<String, HandlerError> {
+        Ok(filesystem::deserialize_from_file()?.user_secret.unwrap())
+    }
+
+
+    pub async fn register_device()  -> Result<(), HandlerError> {
+        let mut data = std::collections::HashMap::new();
+        data.insert("user_id", get_user_id()?);
+        data.insert("user_secret", get_user_id()?);
+
+        let url = get_url()? + "/devices/register";
+        println!("registering...");
+        dbg!(&url);
+        dbg!(&data);
+        reqwest::Client::new()
+            .post(url)
+            .json(&data)
+            .send()
+            .await?;
+        Ok(())
     }
 
     pub async fn update_status_for_cmd(cmd: &FullCmd) -> Result<(), HandlerError> {
