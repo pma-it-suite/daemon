@@ -5,11 +5,10 @@ pub type RawInputCommand = (String, Option<String>);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeviceData {
-    pub q_id: String,
-    pub id: Option<String>,
-    pub user_id: Option<String>,
-    pub user_secret: Option<String>,
-    pub endpoint: Option<String>,
+    pub id: String,
+    pub user_id: String,
+    pub user_secret: String,
+    pub endpoint: String,
 }
 
 pub type Id = String;
@@ -60,6 +59,8 @@ pub enum HandlerError {
     CmdError(Id),
     #[error("parse cmd error")]
     ParseError(String),
+    #[error("db error")]
+    DbError,
 }
 
 #[derive(Debug)]

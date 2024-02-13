@@ -1,10 +1,10 @@
 use std::{thread, time};
 pub mod filesystem;
 pub mod models;
-use models::{FullCmd, JsonStatus, InputCommands, HandlerError};
+use models::{FullCmd, HandlerError, InputCommands, JsonStatus};
 
-const WAIT_LONG: u64 = 2000;
-const WAIT_SHORT: u64 = 2000;
+const WAIT_LONG: u64 = 10000;
+const WAIT_SHORT: u64 = 10000;
 
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
@@ -14,30 +14,42 @@ async fn main() -> Result<(), HandlerError> {
             dbg!(&err);
             if matches!(&err, HandlerError::NotFound) {
                 println!("no cmds found, sleeping...");
+                println!("----------------------------------------------");
                 sleep_blocking(WAIT_LONG);
             } else if matches!(&err, HandlerError::CmdError(_)) {
                 println!("returning err: {}", &err);
                 if let HandlerError::CmdError(cmd_id) = err {
-                    let cmd = FullCmd { status: JsonStatus::Failed, id: cmd_id.to_string(), cmd: InputCommands::Info};
+                    let cmd = FullCmd {
+                        status: JsonStatus::Failed,
+                        id: cmd_id.to_string(),
+                        cmd: InputCommands::Info,
+                    };
                     os_ops::update_status_for_cmd(&cmd).await?;
                 }
             } else {
                 println!("printing err: {}", &err);
             }
         }
+        println!("----------------------------------------------");
         sleep_blocking(WAIT_SHORT);
     }
 }
 
 pub mod os_ops {
+    use crate::filesystem;
+    use crate::models::{
+        DeviceData, FullCmd, HandlerError, Id, InputCommands, JsonCmd, JsonStatus,
+    };
     use serde_json;
     use std::process::Command;
     use tokio::time::{sleep, Duration};
     use warp::Filter;
-    use crate::models::{FullCmd, JsonStatus, InputCommands, HandlerError, JsonCmd};
-    use crate::filesystem;
 
     pub async fn get_and_run_cmd() -> Result<(), HandlerError> {
+        if let None = get_device_id()? {
+            let id = send_register_device_call().await?;
+            register_device(id)?;
+        }
         let mut full_cmd = fetch_cmds().await?;
         full_cmd.status = JsonStatus::InProgress;
         update_status_for_cmd(&full_cmd).await?;
@@ -54,6 +66,14 @@ pub mod os_ops {
             update_status_for_cmd(&full_cmd).await?;
         }
 
+        Ok(())
+    }
+
+    pub fn register_device(id: Id) -> Result<(), HandlerError> {
+        let mut data = get_device_data()?;
+        data.id = id;
+        print!("updating registering at... {:#?}", &data);
+        filesystem::update_or_add_to_file(data)?;
         Ok(())
     }
 
@@ -81,38 +101,66 @@ pub mod os_ops {
         Ok(Some(String::from_utf8(cmd.stdout)?))
     }
 
-    pub fn get_url() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.endpoint.unwrap_or("https://its.kdns.ooo:5001".to_string()))
+    pub fn get_device_data() -> Result<DeviceData, HandlerError> {
+        Ok(filesystem::deserialize_from_file()?)
     }
 
-    pub fn get_device_id() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.id.unwrap_or("b696b18b-c79f-48b7-b2d2-030d4c256402".to_string()))
+    pub fn get_empty_device_data() -> DeviceData {
+        DeviceData {
+            endpoint: "".to_string(),
+            user_id: "".to_string(),
+            user_secret: "".to_string(),
+            id: "".to_string(),
+        }
+    }
+
+    pub fn get_url() -> Result<String, HandlerError> {
+        println!("getting url from db...");
+        Ok(filesystem::deserialize_from_file()?.endpoint)
+    }
+
+    pub fn get_device_id() -> Result<Option<String>, HandlerError> {
+        println!("getting device_id from db...");
+        Ok({
+            let opt = filesystem::deserialize_from_file()?.id;
+            if opt.len() == 0 {
+                None
+            } else {
+                Some(opt)
+            }
+        })
     }
 
     pub fn get_user_id() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.user_id.unwrap())
+        println!("getting user_id from db...");
+        Ok(filesystem::deserialize_from_file()?.user_id)
     }
 
     pub fn get_user_secret() -> Result<String, HandlerError> {
-        Ok(filesystem::deserialize_from_file()?.user_secret.unwrap())
+        println!("getting secret from db...");
+        Ok(filesystem::deserialize_from_file()?.user_secret)
     }
 
-
-    pub async fn register_device()  -> Result<(), HandlerError> {
+    pub async fn send_register_device_call() -> Result<Id, HandlerError> {
         let mut data = std::collections::HashMap::new();
         data.insert("user_id", get_user_id()?);
-        data.insert("user_secret", get_user_id()?);
+        data.insert("user_secret", get_user_secret()?);
 
         let url = get_url()? + "/devices/register";
         println!("registering...");
         dbg!(&url);
         dbg!(&data);
-        reqwest::Client::new()
-            .post(url)
-            .json(&data)
-            .send()
-            .await?;
-        Ok(())
+        let resp = reqwest::Client::new().post(url).json(&data).send().await?;
+
+        handle_response(&resp)?;
+
+        let body = resp.text().await?;
+
+        let json_value =
+            serde_json::from_str::<serde_json::Value>(&body).expect("Failed to parse JSON");
+        let device_id = json_value["device_id"].to_string().replace("\\", "").replace("\"", "");
+        dbg!(&device_id);
+        Ok(device_id)
     }
 
     pub async fn update_status_for_cmd(cmd: &FullCmd) -> Result<(), HandlerError> {
@@ -124,20 +172,19 @@ pub mod os_ops {
         println!("updating...");
         dbg!(&url);
         dbg!(&args);
-        reqwest::Client::new()
+        let resp = reqwest::Client::new()
             .patch(url)
             .query(&args)
             .send()
             .await?;
+
+        handle_response(&resp)?;
         Ok(())
     }
 
-    pub async fn fetch_cmds() -> Result<FullCmd, HandlerError> {
-        let args = [("device_id", get_device_id()?)];
-        let url = get_url()? + "/commands/recent";
-        let response = reqwest::Client::new().get(url).query(&args).send().await?;
-
+    pub fn handle_response(response: &reqwest::Response) -> Result<(), HandlerError> {
         if response.status().is_client_error() || response.status().is_server_error() {
+            dbg!(&response);
             match response.status() {
                 reqwest::StatusCode::NOT_FOUND => {
                     // Handle 404 specifically here if needed
@@ -157,7 +204,25 @@ pub mod os_ops {
                     return Err(HandlerError::Unknown);
                 }
             }
+        } else {
+            Ok(())
         }
+    }
+
+    pub async fn fetch_cmds() -> Result<FullCmd, HandlerError> {
+        let device_id = match get_device_id()? {
+            Some(data) => data,
+            None => return Err(HandlerError::DbError)
+        };
+        let args = [("device_id", device_id)];
+        let url = get_url()? + "/commands/recent";
+
+        dbg!(&url);
+        dbg!(&args);
+
+        let response = reqwest::Client::new().get(url).query(&args).send().await?;
+
+        handle_response(&response)?;
 
         let body = response.text().await?;
         println!("Response:\n{}", body);
@@ -166,13 +231,13 @@ pub mod os_ops {
 
         // Extract the "name" key's value as a string
         let input_resp = InputCommands::from(&(json_value.name, {
-                let val = json_value.args;
-                if val.is_empty() {
-                    None
-                } else {
-                    Some(val)
-                }
-            }));
+            let val = json_value.args;
+            if val.is_empty() {
+                None
+            } else {
+                Some(val)
+            }
+        }));
 
         let command_id = json_value.command_id;
 
