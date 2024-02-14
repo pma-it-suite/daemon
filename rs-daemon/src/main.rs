@@ -23,8 +23,6 @@ fn main() {
 pub mod keepalive_ops {
     use crate::filesystem::{self};
     use crate::models::{FsResult, ProcessData, Status};
-    use std::fs;
-    use std::path::Path;
     use std::process::Command;
 
     pub type KeepAliveResult<T> = FsResult<T>;
