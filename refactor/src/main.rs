@@ -11,7 +11,11 @@ mod models;
 
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
+    std::env::set_var("RUST_LOG", "trace");
+    simple_logger::SimpleLogger::new().env().init().unwrap();
+
     println!("Hello, world!");
+    trace!("trace");
 
     // prelim check for data
     let user_id_key = "user_id";
@@ -86,6 +90,7 @@ pub mod localstore {
     }
 
     pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
+        trace!("querying data for key: {}", key);
         let handle = get_handle()?;
         query_internal(&handle, key)
     }
