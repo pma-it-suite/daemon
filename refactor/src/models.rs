@@ -1,43 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub type RawInputCommand = (String, Option<String>);
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DeviceData {
-    pub id: String,
-    pub user_id: String,
-    pub user_secret: String,
-    pub endpoint: String,
-}
-
-pub type Id = String;
-
-#[derive(Debug)]
-pub struct FullCmd {
-    pub status: JsonStatus,
-    pub id: Id,
-    pub cmd: InputCommands,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct JsonCmd {
-    pub status: String,
-    pub command_id: Id,
-    pub name: String,
-    pub args: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SystemInfo {
-    cpu_count: u32,
-    cpu_speed: Option<u64>,
-    load_avg: (f64, f64, f64),
-    mem_total: u64,
-    mem_free: u64,
-    os_type: String,
-    os_release: String,
-}
+use self::db::common::Id;
 
 #[derive(Error, Debug)]
 pub enum HandlerError {
@@ -63,61 +27,53 @@ pub enum HandlerError {
     DbError,
 }
 
-#[derive(Debug)]
-pub enum InputCommands {
-    Info,
-    Sleep,
-    Health,
-    ShellCmd(String),
-}
+pub mod db {
+    pub mod common {
+        use std::collections::HashMap;
 
-#[derive(Debug)]
-pub enum JsonStatus {
-    Pending,
-    InProgress,
-    Finished,
-    Failed,
-}
+        pub type Id = String;
 
-impl JsonStatus {
-    pub fn from(raw: &str) -> Self {
-        match raw {
-            "pending" => Self::Pending,
-            "in_progress" => Self::InProgress,
-            "finished" => Self::Finished,
-            "failed" => Self::Failed,
-            _ => unimplemented!(),
+        pub type Metadata = HashMap<String, String>;
+    }
+    pub mod commands {
+        use super::common::Id;
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize, Debug)]
+        pub struct Command {
+            pub status: CommandStatus,
+            pub args: Option<String>,
+            pub name: CommandNames,
+            pub issuer_id: Id,
+            pub device_id: Id,
+        }
+
+        #[derive(Serialize, Deserialize, Debug)]
+        pub enum CommandNames {
+            Update,
+        }
+
+        #[derive(Serialize, Deserialize, Debug)]
+        pub enum CommandStatus {
+            Running,
+            Blocked,
+            Terminated,
+            Failed,
+            Ready,
+            Pending,
         }
     }
 
-    pub fn to_output(&self) -> String {
-        match self {
-            Self::Pending => "pending",
-            Self::InProgress => "in_progress",
-            Self::Finished => "finished",
-            Self::Failed => "failed",
-        }
-        .to_string()
-    }
-}
+    pub mod devices {
+        use super::common::{Id, Metadata};
+        use serde::{Deserialize, Serialize};
 
-impl InputCommands {
-    pub fn from(raw_input: &RawInputCommand) -> Result<Self, HandlerError> {
-        match (raw_input.0.as_str(), {
-            raw_input.1.as_deref()
-        }) {
-            ("info", None) => Ok(Self::Info),
-            ("sleep", None) => Ok(Self::Sleep),
-            ("health", None) => Ok(Self::Health),
-            ("shellCmd", Some(args)) => Ok(Self::ShellCmd(args.to_string())),
-            ("shellCmd", None) => Err(HandlerError::ParseError(format!(
-                "no args for cmd: {:#?}",
-                &raw_input
-            ))),
-            _ => Err(HandlerError::ParseError(format!(
-                "not implemented for input: {:#?}",
-                &raw_input
-            ))),
+        #[derive(Serialize, Deserialize, Debug)]
+        pub struct Device {
+            pub name: String,
+            pub user_id: Id,
+            pub command_ids: Vec<Id>,
+            pub metadata: Option<Metadata>,
         }
     }
 }
