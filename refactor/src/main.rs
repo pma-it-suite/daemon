@@ -82,7 +82,8 @@ lazy_static! {
 
     pub fn write_single(data: &String, key: &str) -> Result<(), HandlerError> {
         info!("writing data for key: {}", key);
-        let handle = get_handle()?;
+        let binding = HANDLE.lock().unwrap();
+        let handle = binding.as_ref().unwrap();
         handle.save_with_id(data, key)?;
         Ok(())
     }
@@ -101,7 +102,8 @@ lazy_static! {
 
     pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
         info!("querying data for key: {}", key);
-        let handle = get_handle()?;
+        let binding = HANDLE.lock().unwrap();
+        let handle = binding.as_ref().unwrap();
         query_internal(&handle, key)
     }
 }
