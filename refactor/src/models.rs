@@ -71,8 +71,23 @@ pub mod db {
             Failed,
             Ready,
             Pending,
-            Received,
             Sent,
+            Received,
+        }
+
+        impl CommandStatus {
+            pub fn as_str(&self) -> &'static str {
+                match *self {
+                    CommandStatus::Running => "RUNNING",
+                    CommandStatus::Blocked => "BLOCKED",
+                    CommandStatus::Terminated => "TERMINATED",
+                    CommandStatus::Failed => "FAILED",
+                    CommandStatus::Ready => "READY",
+                    CommandStatus::Pending => "PENDING",
+                    CommandStatus::Sent => "SENT",
+                    CommandStatus::Received => "RECEIVED",
+                }
+            }
         }
     }
 

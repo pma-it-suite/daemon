@@ -3,8 +3,13 @@ use models::{db::commands::Command, HandlerError};
 use crate::models::db::commands::CommandStatus;
 
 mod models;
-fn main() {
+
+#[tokio::main]
+async fn main() -> Result<(), HandlerError> {
     println!("Hello, world!");
+    // update_command_status_received(command).await?;
+
+    Ok(())
 }
 
 /**
@@ -35,7 +40,7 @@ pub fn ack_command_received() {
 }
 
 pub async fn update_command_status_received(command: Command) -> Result<(), HandlerError> {
-    let new_status = CommandStatus::Received;
+    let new_status = CommandStatus::Ready;
     api::requests::update_command_status::update_command_status(&command, new_status).await?;
 
     Ok(())
