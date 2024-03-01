@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use self::db::common::Id;
@@ -34,9 +33,13 @@ pub mod db {
         pub type Id = String;
 
         pub type Metadata = HashMap<String, String>;
+
+        pub trait HasId {
+            fn get_id(&self) -> &Id;
+        }
     }
     pub mod commands {
-        use super::common::Id;
+        use super::common::{HasId, Id};
         use serde::{Deserialize, Serialize};
 
         #[derive(Serialize, Deserialize, Debug)]
@@ -46,6 +49,13 @@ pub mod db {
             pub name: CommandNames,
             pub issuer_id: Id,
             pub device_id: Id,
+            id: Id,
+        }
+
+        impl HasId for Command {
+            fn get_id(&self) -> &Id {
+                &self.id
+            }
         }
 
         #[derive(Serialize, Deserialize, Debug)]
@@ -61,6 +71,8 @@ pub mod db {
             Failed,
             Ready,
             Pending,
+            Received,
+            Sent,
         }
     }
 
