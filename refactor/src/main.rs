@@ -1,5 +1,5 @@
 use localstore::query_data;
-use log::{info, trace};
+use log::info;
 use models::{
     db::{commands::Command, common::Id},
     HandlerError,
@@ -11,26 +11,22 @@ mod models;
 
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
-    std::env::set_var("RUST_LOG", "trace");
+    std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
-
-    println!("Hello, world!");
-    trace!("trace");
 
     // prelim check for data
     let user_id_key = "user_id";
     let user_id = query_data(&user_id_key)?.expect("user id to be set");
-
     info!("user_id retrieved from store is {}", user_id);
 
     // get device id or register it if not set
     let device_id_key = "device_id";
-    let device_id_resp = query_data(&device_id_key)?;
+    let device_id_resp = query_data(&device_id_key);
     let device_id: Id;
-    if device_id_resp.is_none() {
+    if (&device_id_resp).is_err() {
         device_id = register_device(&user_id).await?;
     } else {
-        device_id = device_id_resp.unwrap();
+        device_id = device_id_resp?.unwrap();
     }
     info!("device id retrieved from store is {}", device_id);
 
@@ -46,7 +42,7 @@ async fn main() -> Result<(), HandlerError> {
 pub mod localstore {
     use crate::models::HandlerError;
     use jfs;
-    use log::{info, trace, warn};
+    use log::{info, warn};
     use std::collections::HashMap;
 
     fn get_file_path() -> String {
@@ -68,10 +64,11 @@ pub mod localstore {
 
     fn init_db(db: &jfs::Store) -> Result<(), HandlerError> {
         let key = "user_id";
-        if query_internal(db, &key)?.is_none() {
+        let resp = query_internal(db, &key);
+        if resp.is_err() || resp?.is_none() {
             let user_id = "ee9470de-54a4-419c-b34a-ba2fa18731d8";
             db.save_with_id(&user_id.to_string(), &key)?;
-            trace!("user_id set to default: {}", user_id);
+            info!("user_id set to default: {}", user_id);
         }
         Ok(())
     }
@@ -85,12 +82,12 @@ pub mod localstore {
     }
 
     fn query_internal(db: &jfs::Store, key: &str) -> Result<Option<String>, HandlerError> {
-        let data = db.get::<HashMap<String, String>>(key)?;
-        Ok(data.get(key).cloned())
+        let data = db.get(key)?;
+        Ok(data)
     }
 
     pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
-        trace!("querying data for key: {}", key);
+        info!("querying data for key: {}", key);
         let handle = get_handle()?;
         query_internal(&handle, key)
     }
@@ -107,7 +104,7 @@ pub fn get_device_name() -> String {
 
 pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
     let device_name = get_device_name();
-    trace!("registering device with name: {}", device_name);
+    info!("registering device with name: {}", device_name);
 
     Ok(
         api::requests::register_device::register_device(user_id, device_name)
@@ -135,9 +132,15 @@ pub fn run_main_event_loop() {
     unimplemented!()
 }
 
-pub async fn fetch_commands(device_id: &Id) -> Result<Command, HandlerError> {
+pub async fn fetch_commands(device_id: &Id) -> Result<Option<Command>, HandlerError> {
     let response = api::requests::fetch_commands::fetch_commands(device_id.clone()).await?;
-    Ok(response.command)
+    if response.is_none() {
+        return Ok(None);
+    }
+    else {
+        let command = response.unwrap().command;
+        Ok(Some(command))
+    }
 }
 
 pub fn fetch_next_command() {
@@ -297,6 +300,8 @@ pub mod api {
         }
 
         pub mod fetch_commands {
+            use log::{info, warn};
+
             use crate::api::request_models::fetch_commands::FetchRecentCommandResponse;
             use crate::api::requests::{get_client, get_host, ApiResult};
             use crate::models::db::common::Id;
@@ -306,7 +311,7 @@ pub mod api {
                 format!("{}/commands/recent", host)
             }
 
-            pub async fn fetch_commands(device_id: Id) -> ApiResult<FetchRecentCommandResponse> {
+            pub async fn fetch_commands(device_id: Id) -> ApiResult<Option<FetchRecentCommandResponse>> {
                 let url = get_url();
 
                 let response = get_client()
@@ -316,10 +321,15 @@ pub mod api {
                     .await?;
 
                 let status = response.status();
-                println!("Response status: {}", status);
+                info!("Response status for fetch commands: {}", status);
+
+                if status != 200 {
+                    warn!("No commands found: {}", response.text().await?);
+                    return Ok(None);
+                }
 
                 let json = response.json().await?;
-                Ok(json)
+                Ok(Some(json))
             }
         }
     }
