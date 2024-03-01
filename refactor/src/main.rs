@@ -5,7 +5,7 @@ use models::{
     HandlerError,
 };
 
-use crate::models::db::commands::CommandStatus;
+use crate::{localstore::write_single, models::db::commands::CommandStatus};
 
 mod models;
 
@@ -25,6 +25,7 @@ async fn main() -> Result<(), HandlerError> {
     let device_id: Id;
     if (&device_id_resp).is_err() {
         device_id = register_device(&user_id).await?;
+        write_single(&device_id, device_id_key)?;
     } else {
         device_id = device_id_resp?.unwrap();
     }
@@ -44,10 +45,16 @@ pub mod localstore {
     use jfs;
     use log::{info, warn};
     use std::collections::HashMap;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
 
     fn get_file_path() -> String {
         "localstore.json".to_string()
     }
+
+lazy_static! {
+    static ref HANDLE: Mutex<Result<jfs::Store, HandlerError>> = Mutex::new(get_handle());
+}
 
     fn get_handle() -> Result<jfs::Store, HandlerError> {
         let db = jfs::Store::new_with_cfg(
@@ -73,10 +80,16 @@ pub mod localstore {
         Ok(())
     }
 
-    pub fn write_data(data: HashMap<String, String>) -> Result<(), HandlerError> {
+    pub fn write_single(data: &String, key: &str) -> Result<(), HandlerError> {
+        info!("writing data for key: {}", key);
         let handle = get_handle()?;
+        handle.save_with_id(data, key)?;
+        Ok(())
+    }
+
+    pub fn write_data(data: HashMap<String, String>) -> Result<(), HandlerError> {
         data.keys().for_each(|key| {
-            handle.save_with_id(&data[key], key).unwrap();
+            write_single(&data[key], key).unwrap();
         });
         Ok(())
     }
