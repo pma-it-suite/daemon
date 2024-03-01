@@ -787,6 +787,7 @@ version = "0.1.0"
 dependencies = [
  "jfs",
  "lazy_static",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

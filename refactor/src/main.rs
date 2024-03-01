@@ -1,3 +1,5 @@
+use localstore::query_data;
+use log::{info, trace};
 use models::{
     db::{commands::Command, common::Id},
     HandlerError,
@@ -11,6 +13,27 @@ mod models;
 async fn main() -> Result<(), HandlerError> {
     println!("Hello, world!");
 
+    // prelim check for data
+    let user_id_key = "user_id";
+    let user_id = query_data(&user_id_key)?.expect("user id to be set");
+
+    info!("user_id retrieved from store is {}", user_id);
+
+    // get device id or register it if not set
+    let device_id_key = "device_id";
+    let device_id_resp = query_data(&device_id_key)?;
+    let device_id: Id;
+    if device_id_resp.is_none() {
+        device_id = register_device(&user_id).await?;
+    } else {
+        device_id = device_id_resp.unwrap();
+    }
+    info!("device id retrieved from store is {}", device_id);
+
+    // get most recent command
+    let command = fetch_commands(&device_id).await?;
+    dbg!(&command);
+
     // update_command_status_received(command).await?;
 
     Ok(())
@@ -19,27 +42,52 @@ async fn main() -> Result<(), HandlerError> {
 pub mod localstore {
     use crate::models::HandlerError;
     use jfs;
+    use log::{info, trace, warn};
     use std::collections::HashMap;
 
     fn get_file_path() -> String {
         "localstore.json".to_string()
     }
 
-    fn get_handle()-> Result<jfs::Store, HandlerError> {
-        Ok(jfs::Store::new_with_cfg(
+    fn get_handle() -> Result<jfs::Store, HandlerError> {
+        let db = jfs::Store::new_with_cfg(
             get_file_path(),
             jfs::Config {
                 single: true,
                 pretty: true,
                 ..Default::default()
             },
-        )?)
+        )?;
+        init_db(&db)?;
+        Ok(db)
     }
 
-    fn get_and_write(data: HashMap<String, String>) -> Result<(), HandlerError> {
-        let handle = get_handle()?;
-        handle.save(&data)?;
+    fn init_db(db: &jfs::Store) -> Result<(), HandlerError> {
+        let key = "user_id";
+        if query_internal(db, &key)?.is_none() {
+            let user_id = "ee9470de-54a4-419c-b34a-ba2fa18731d8";
+            db.save_with_id(&user_id.to_string(), &key)?;
+            trace!("user_id set to default: {}", user_id);
+        }
         Ok(())
+    }
+
+    pub fn write_data(data: HashMap<String, String>) -> Result<(), HandlerError> {
+        let handle = get_handle()?;
+        data.keys().for_each(|key| {
+            handle.save_with_id(&data[key], key).unwrap();
+        });
+        Ok(())
+    }
+
+    fn query_internal(db: &jfs::Store, key: &str) -> Result<Option<String>, HandlerError> {
+        let data = db.get::<HashMap<String, String>>(key)?;
+        Ok(data.get(key).cloned())
+    }
+
+    pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
+        let handle = get_handle()?;
+        query_internal(&handle, key)
     }
 }
 
@@ -48,17 +96,13 @@ pub mod localstore {
  * 1. register device with server
  * 2. test connection to server
  */
-pub fn get_user_id() -> String {
-    "ee9470de-54a4-419c-b34a-ba2fa18731d8".to_string()
-}
-
 pub fn get_device_name() -> String {
     "testdevicefelipearce".to_string()
 }
 
-pub async fn register_device() -> Result<Id, HandlerError> {
-    let user_id = get_user_id();
+pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
     let device_name = get_device_name();
+    trace!("registering device with name: {}", device_name);
 
     Ok(
         api::requests::register_device::register_device(user_id, device_name)
@@ -86,8 +130,9 @@ pub fn run_main_event_loop() {
     unimplemented!()
 }
 
-pub fn fetch_commands() {
-    unimplemented!()
+pub async fn fetch_commands(device_id: &Id) -> Result<Command, HandlerError> {
+    let response = api::requests::fetch_commands::fetch_commands(device_id.clone()).await?;
+    Ok(response.command)
 }
 
 pub fn fetch_next_command() {
@@ -191,13 +236,13 @@ pub mod api {
             }
 
             pub async fn register_device(
-                user_id: Id,
+                user_id: &Id,
                 device_name: String,
             ) -> ApiResult<RegisterDeviceResponse> {
                 let request = RegisterDeviceRequest {
                     user_id: user_id.clone(),
                     device_name,
-                    issuer_id: user_id,
+                    issuer_id: user_id.clone(),
                 };
 
                 let url = get_url();
