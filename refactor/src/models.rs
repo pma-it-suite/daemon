@@ -74,7 +74,6 @@ pub mod db {
             Sent,
             Received,
         }
-
     }
 
     pub mod devices {

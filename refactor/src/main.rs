@@ -1,4 +1,3 @@
-
 use models::HandlerError;
 use pre_event_loop::{get_device_id, get_user_id};
 mod models;
@@ -17,7 +16,7 @@ async fn main() -> Result<(), HandlerError> {
     Ok(())
 }
 
-pub mod pre_event_loop;
-pub mod main_event_loop;
 pub mod api;
 pub mod localstore;
+pub mod main_event_loop;
+pub mod pre_event_loop;
