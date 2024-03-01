@@ -10,9 +10,37 @@ mod models;
 #[tokio::main]
 async fn main() -> Result<(), HandlerError> {
     println!("Hello, world!");
+
     // update_command_status_received(command).await?;
 
     Ok(())
+}
+
+pub mod localstore {
+    use crate::models::HandlerError;
+    use jfs;
+    use std::collections::HashMap;
+
+    fn get_file_path() -> String {
+        "localstore.json".to_string()
+    }
+
+    fn get_handle()-> Result<jfs::Store, HandlerError> {
+        Ok(jfs::Store::new_with_cfg(
+            get_file_path(),
+            jfs::Config {
+                single: true,
+                pretty: true,
+                ..Default::default()
+            },
+        )?)
+    }
+
+    fn get_and_write(data: HashMap<String, String>) -> Result<(), HandlerError> {
+        let handle = get_handle()?;
+        handle.save(&data)?;
+        Ok(())
+    }
 }
 
 /**
