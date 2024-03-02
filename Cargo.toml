@@ -19,4 +19,4 @@ log = "0.4.8"
 simple_logger = "4.3.3"
 
 [dev-dependencies]
-httpmock = "0.7.0"
+mockito = "1.4.0"

@@ -115,10 +115,7 @@ pub mod fetch_commands {
 
     #[cfg(test)]
     mod test {
-        use httpmock::Method::GET;
-        use httpmock::MockServer;
-
-        use crate::models::db::common::Id;
+        use crate::{api::requests::get_port_string_if_any, models::db::common::Id};
 
         fn before_each() {
             std::env::set_var("RUST_LOG", "info");
@@ -126,22 +123,23 @@ pub mod fetch_commands {
         }
 
         #[tokio::test]
-        async fn fetch_success() {
+        async fn test_fetch_commands() {
             before_each();
-            // Start a mock server
-            let server = MockServer::start();
 
-            // Create a mock on the server
-            let mock = server.mock(|when, then| {
-                when.method(GET).path("/commands/recent");
-                then.status(200);
-            });
+            let opts = mockito::ServerOpts {
+                host: "127.0.0.1",
+                port: get_port_string_if_any().parse::<u16>().unwrap(),
+                ..Default::default()
+            };
+            let mut server = mockito::Server::new_with_opts(opts);
 
-            // Call the function under test
+            let _m = server
+                .mock("GET", "/commands/recent")
+                .with_status(200)
+                .create();
+
             let result = super::fetch_commands(Id::new()).await;
 
-            // Assert that the mock was called and the function returned the expected result
-            mock.assert();
             assert!(result.is_ok());
             let response = result.unwrap();
             assert!(response.is_some());
