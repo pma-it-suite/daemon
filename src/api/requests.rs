@@ -112,4 +112,33 @@ pub mod fetch_commands {
         let json = response.json().await?;
         Ok(Some(json))
     }
+
+    #[cfg(test)]
+    mod test {
+        use httpmock::Method::GET;
+        use httpmock::MockServer;
+
+        use crate::models::db::common::Id;
+
+        #[tokio::test]
+        async fn fetch_success() {
+            // Start a mock server
+            let server = MockServer::start();
+
+            // Create a mock on the server
+            let mock = server.mock(|when, then| {
+                when.method(GET).path("/commands/recent");
+                then.status(200);
+            });
+
+            // Call the function under test
+            let result = super::fetch_commands(Id::new()).await;
+
+            // Assert that the mock was called and the function returned the expected result
+            mock.assert();
+            assert!(result.is_ok());
+            let response = result.unwrap();
+            assert!(response.is_some());
+        }
+    }
 }
