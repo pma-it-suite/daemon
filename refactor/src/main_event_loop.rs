@@ -14,6 +14,8 @@ use crate::{
     },
 };
 
+use crate::main_event_loop::executor::handoff_command_to_executor;
+
 const SLEEP_SHORT: u64 = 1;
 const SLEEP_MEDIUM: u64 = 5;
 const SLEEP_LONG: u64 = 10;
@@ -36,16 +38,25 @@ pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), Ha
         let sleep_int = match command_resp {
             Ok(Some(command)) => {
                 dbg!(&command);
-                let resp = update_command_status_received(&command).await;
+                let resp = update_command_status(&command, CommandStatus::Received).await;
                 match resp {
                     Err(e) => {
                         handle_err(e);
                     }
                     Ok(_) => {
-                        let resp = execute_command(&command);
-                        if let Err(e) =
-                            update_command_status_after_execution(&command, resp.is_ok()).await
-                        {
+                        let resp = execute_command(&command).await;
+                        let command_status = match resp {
+                            Ok(data_opt) => {
+                                info!("command executed is good, data: {:?}", data_opt);
+                                CommandStatus::Terminated
+                            }
+                            Err(e) => {
+                                handle_err(e);
+                                CommandStatus::Failed
+                            }
+                        };
+
+                        if let Err(e) = update_command_status(&command, command_status).await {
                             handle_err(e);
                         }
                     }
@@ -77,30 +88,18 @@ pub async fn fetch_command(device_id: &Id) -> Result<Option<Command>, HandlerErr
     }
 }
 
-pub async fn update_command_status_received(command: &Command) -> Result<(), HandlerError> {
-    let new_status = CommandStatus::Ready;
-    api::requests::update_command_status::update_command_status(command, new_status).await?;
-
-    Ok(())
-}
-
-pub fn execute_command(command: &Command) -> Result<(), HandlerError> {
-    unimplemented!()
-}
-
-pub async fn update_command_status_after_execution(
+pub async fn update_command_status(
     command: &Command,
-    isSuccess: bool,
+    new_status: CommandStatus,
 ) -> Result<(), HandlerError> {
-    let new_status = if isSuccess {
-        CommandStatus::Terminated
-    } else {
-        CommandStatus::Failed
-    };
-
     api::requests::update_command_status::update_command_status(command, new_status).await?;
 
     Ok(())
+}
+
+pub async fn execute_command(command: &Command) -> Result<Option<String>, HandlerError> {
+    let resp = handoff_command_to_executor(command).await?;
+    Ok(resp)
 }
 
 fn sleep_in_seconds(units: u64) {
@@ -117,6 +116,29 @@ fn handle_err(err: HandlerError) {
         }
         _ => {
             dbg!(&err);
+        }
+    }
+}
+
+pub mod executor {
+    use log::info;
+
+    use crate::models::db::commands::{Command, CommandNames};
+    use crate::models::HandlerError;
+
+    pub async fn handoff_command_to_executor(
+        command: &Command,
+    ) -> Result<Option<String>, HandlerError> {
+        info!("handing off command to executor: {:?}", &command);
+        match command.name {
+            CommandNames::Test => {
+                // TODO @felipearce: add test command here
+                Ok(Some("test".to_string()))
+            }
+            _ => {
+                // TODO @felipearce: add more commands here
+                Ok(None)
+            }
         }
     }
 }
