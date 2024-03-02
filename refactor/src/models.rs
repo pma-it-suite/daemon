@@ -62,6 +62,7 @@ pub mod db {
         pub enum CommandNames {
             Update,
             Test,
+            ShellCmd,
         }
 
         #[derive(Serialize, Deserialize, Debug)]
