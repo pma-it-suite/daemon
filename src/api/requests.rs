@@ -120,8 +120,13 @@ pub mod fetch_commands {
 
         use crate::models::db::common::Id;
 
+        fn before_each() {
+                std::env::set_var("RUST_LOG", "info");
+        }
+
         #[tokio::test]
         async fn fetch_success() {
+            before_each();
             // Start a mock server
             let server = MockServer::start();
 
