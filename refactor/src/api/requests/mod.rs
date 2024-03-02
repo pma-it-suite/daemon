@@ -1,4 +1,3 @@
-
 use crate::models::HandlerError;
 pub type ApiResult<T> = Result<T, HandlerError>;
 

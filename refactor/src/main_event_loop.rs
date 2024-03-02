@@ -1,3 +1,8 @@
+use log::info;
+use std::error::Error;
+use std::thread;
+use std::time::Duration;
+
 use crate::{
     api,
     models::{
@@ -8,6 +13,10 @@ use crate::{
         HandlerError,
     },
 };
+
+const SLEEP_SHORT: u64 = 1;
+const SLEEP_MEDIUM: u64 = 5;
+const SLEEP_LONG: u64 = 10;
 
 /**
  * main (post-registered) run loop:
@@ -21,12 +30,27 @@ use crate::{
  * 5. return data from command (if any)
  */
 pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), HandlerError> {
-    // get most recent command
-    let command = fetch_commands(device_id).await?;
-    dbg!(&command);
+    loop {
+        // get most recent command
+        let command_resp = fetch_commands(device_id).await;
+        let sleep_int = match command_resp {
+            Ok(Some(command)) => {
+                dbg!(&command);
+                // update_command_status_received(command).await?;
+                SLEEP_SHORT
+            }
+            Ok(None) => {
+                info!("no commands found");
+                SLEEP_MEDIUM
+            }
+            Err(e) => {
+                handle_err(e);
+                SLEEP_LONG
+            }
+        };
 
-    // update_command_status_received(command).await?;
-    unimplemented!()
+        sleep_in_seconds(sleep_int);
+    }
 }
 
 pub async fn fetch_commands(device_id: &Id) -> Result<Option<Command>, HandlerError> {
@@ -60,4 +84,26 @@ pub fn execute_command() {
 
 pub fn update_command_status_after_execution() {
     unimplemented!()
+}
+
+fn sleep_in_seconds(units: u64) {
+    let sleep_in_ms = units * 1000;
+    thread::sleep(Duration::from_millis(sleep_in_ms));
+}
+
+fn handle_err(err: HandlerError) {
+    match err {
+        HandlerError::ReqwestError(vals) => {
+            let _err_info = format!(
+                "path: {}, query: {}, message: {}",
+                vals.url().unwrap().path(),
+                vals.url().unwrap().query().unwrap_or("none"),
+                vals.source().unwrap()
+            );
+            dbg!(&vals);
+        }
+        _ => {
+            dbg!(&err);
+        }
+    }
 }
