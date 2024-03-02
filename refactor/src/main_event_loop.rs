@@ -32,11 +32,25 @@ const SLEEP_LONG: u64 = 10;
 pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), HandlerError> {
     loop {
         // get most recent command
-        let command_resp = fetch_commands(device_id).await;
+        let command_resp = fetch_command(device_id).await;
         let sleep_int = match command_resp {
             Ok(Some(command)) => {
                 dbg!(&command);
-                // update_command_status_received(command).await?;
+                let resp = update_command_status_received(&command).await;
+                match resp {
+                    Err(e) => {
+                        handle_err(e);
+                    }
+                    Ok(_) => {
+                        let resp = execute_command(&command);
+                        if let Err(e) =
+                            update_command_status_after_execution(&command, resp.is_ok()).await
+                        {
+                            handle_err(e);
+                        }
+                    }
+                }
+
                 SLEEP_SHORT
             }
             Ok(None) => {
@@ -53,7 +67,7 @@ pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), Ha
     }
 }
 
-pub async fn fetch_commands(device_id: &Id) -> Result<Option<Command>, HandlerError> {
+pub async fn fetch_command(device_id: &Id) -> Result<Option<Command>, HandlerError> {
     let response = api::requests::fetch_commands::fetch_commands(device_id.clone()).await?;
     if response.is_none() {
         Ok(None)
@@ -63,27 +77,30 @@ pub async fn fetch_commands(device_id: &Id) -> Result<Option<Command>, HandlerEr
     }
 }
 
-pub fn fetch_next_command() {
-    unimplemented!()
-}
-
-pub fn ack_command_received() {
-    unimplemented!()
-}
-
-pub async fn update_command_status_received(command: Command) -> Result<(), HandlerError> {
+pub async fn update_command_status_received(command: &Command) -> Result<(), HandlerError> {
     let new_status = CommandStatus::Ready;
-    api::requests::update_command_status::update_command_status(&command, new_status).await?;
+    api::requests::update_command_status::update_command_status(command, new_status).await?;
 
     Ok(())
 }
 
-pub fn execute_command() {
+pub fn execute_command(command: &Command) -> Result<(), HandlerError> {
     unimplemented!()
 }
 
-pub fn update_command_status_after_execution() {
-    unimplemented!()
+pub async fn update_command_status_after_execution(
+    command: &Command,
+    isSuccess: bool,
+) -> Result<(), HandlerError> {
+    let new_status = if isSuccess {
+        CommandStatus::Terminated
+    } else {
+        CommandStatus::Failed
+    };
+
+    api::requests::update_command_status::update_command_status(command, new_status).await?;
+
+    Ok(())
 }
 
 fn sleep_in_seconds(units: u64) {
