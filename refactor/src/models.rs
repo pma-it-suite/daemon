@@ -49,18 +49,19 @@ pub mod db {
             pub name: CommandNames,
             pub issuer_id: Id,
             pub device_id: Id,
-            id: Id,
+            _id: Id,
         }
 
         impl HasId for Command {
             fn get_id(&self) -> &Id {
-                &self.id
+                &self._id
             }
         }
 
         #[derive(Serialize, Deserialize, Debug)]
         pub enum CommandNames {
             Update,
+            Test,
         }
 
         #[derive(Serialize, Deserialize, Debug)]

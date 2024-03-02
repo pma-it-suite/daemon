@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error, info, trace};
 use std::error::Error;
 use std::thread;
 use std::time::Duration;
@@ -94,12 +94,8 @@ fn sleep_in_seconds(units: u64) {
 fn handle_err(err: HandlerError) {
     match err {
         HandlerError::ReqwestError(vals) => {
-            let err_info = format!(
-                "path: {}, query: {}, message: {}",
-                vals.url().unwrap().path(),
-                vals.url().unwrap().query().unwrap_or("none"),
-                vals.source().unwrap()
-            );
+            trace!("ReqwestError: {:?}", &vals);
+            let err_info = format!("url: {:#?}, source: {:#?}", vals.url(), vals.source());
             error!("Error in main loop: {}", &err_info);
         }
         _ => {
