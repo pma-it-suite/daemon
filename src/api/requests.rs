@@ -122,6 +122,7 @@ pub mod fetch_commands {
 
         fn before_each() {
             std::env::set_var("RUST_LOG", "info");
+            simple_logger::SimpleLogger::new().env().init().unwrap();
         }
 
         #[tokio::test]
