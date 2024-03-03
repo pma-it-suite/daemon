@@ -52,6 +52,19 @@ pub mod db {
             _id: Id,
         }
 
+        impl Default for Command {
+            fn default() -> Self {
+                Command {
+                    status: CommandStatus::Pending,
+                    args: None,
+                    name: CommandNames::Update,
+                    issuer_id: "default".to_string(),
+                    device_id: "default".to_string(),
+                    _id: "default".to_string(),
+                }
+            }
+        }
+
         impl HasId for Command {
             fn get_id(&self) -> &Id {
                 &self._id

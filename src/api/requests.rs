@@ -115,10 +115,10 @@ pub mod fetch_commands {
 
     #[cfg(test)]
     mod test {
-        use crate::{api::requests::get_port_string_if_any, models::db::common::Id};
+        use crate::{api::{models::fetch_commands::FetchRecentCommandResponse, requests::get_port_string_if_any}, models::db::commands::Command};
 
         fn before_each() {
-            std::env::set_var("RUST_LOG", "info");
+            std::env::set_var("RUST_LOG", "debug");
             simple_logger::SimpleLogger::new().env().init().unwrap();
         }
 
@@ -133,13 +133,22 @@ pub mod fetch_commands {
             };
             let mut server = mockito::Server::new_with_opts(opts);
 
-            let _m = server
-                .mock("GET", "/commands/recent")
+            let device_id = "testid";
+
+            let payload = FetchRecentCommandResponse::new(Command::default());
+            let json = serde_json::to_string(&payload).unwrap();
+            server
+                .mock(
+                    "GET",
+                    format!("/commands/recent?device_id={}", &device_id).as_str(),
+                )
                 .with_status(200)
+                .with_body(json)
                 .create();
 
-            let result = super::fetch_commands(Id::new()).await;
+            let result = super::fetch_commands(device_id.to_string()).await;
 
+            dbg!("{}", &result);
             assert!(result.is_ok());
             let response = result.unwrap();
             assert!(response.is_some());

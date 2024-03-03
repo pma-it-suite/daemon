@@ -17,6 +17,12 @@ pub mod fetch_commands {
     pub struct FetchRecentCommandResponse {
         pub command: Command,
     }
+
+    impl FetchRecentCommandResponse {
+        pub fn new(command: Command) -> Self {
+            FetchRecentCommandResponse { command }
+        }
+    }
 }
 
 pub mod register_device {
