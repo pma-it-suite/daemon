@@ -115,28 +115,42 @@ pub mod fetch_commands {
 
     #[cfg(test)]
     mod test {
-        use crate::{api::{models::fetch_commands::FetchRecentCommandResponse, requests::get_port_string_if_any}, models::db::commands::Command};
+        use crate::{
+            api::{
+                models::fetch_commands::FetchRecentCommandResponse,
+                requests::get_port_string_if_any,
+            },
+            models::db::commands::Command,
+        };
 
         fn before_each() {
             std::env::set_var("RUST_LOG", "debug");
             simple_logger::SimpleLogger::new().env().init().unwrap();
         }
 
-        #[tokio::test]
-        async fn test_fetch_commands() {
-            before_each();
+        fn get_json_payload() -> String {
+            serde_json::to_string(&FetchRecentCommandResponse::new(Command::default())).unwrap()
+        }
 
+        fn setup_server() -> mockito::Server {
             let opts = mockito::ServerOpts {
                 host: "127.0.0.1",
                 port: get_port_string_if_any().parse::<u16>().unwrap(),
                 ..Default::default()
             };
-            let mut server = mockito::Server::new_with_opts(opts);
+            mockito::Server::new_with_opts(opts)
+        }
+
+        #[tokio::test]
+        async fn test_fetch_commands() {
+            before_each();
+
 
             let device_id = "testid";
 
-            let payload = FetchRecentCommandResponse::new(Command::default());
-            let json = serde_json::to_string(&payload).unwrap();
+            let json = get_json_payload();
+            let mut server = setup_server();
+
             server
                 .mock(
                     "GET",
