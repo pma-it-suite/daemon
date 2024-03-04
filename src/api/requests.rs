@@ -100,11 +100,13 @@ pub mod update_command_status {
 }
 
 pub mod fetch_commands {
-    use log::{info, warn};
+    use log::{error, info, warn};
+    use reqwest::StatusCode;
 
     use crate::api::models::fetch_commands::FetchRecentCommandResponse;
     use crate::api::requests::{get_client, ApiResult};
     use crate::models::db::common::Id;
+    use crate::models::HandlerError;
 
     use super::ApiConfig;
 
@@ -123,13 +125,31 @@ pub mod fetch_commands {
         let status = response.status();
         info!("Response status for fetch commands: {}", status);
 
-        if status != 200 {
-            warn!("No commands found: {}", response.text().await?);
-            return Ok(None);
-        }
+        match status {
+            StatusCode::NOT_FOUND => {
+                warn!("No commands found: {}", response.text().await?);
+                Ok(None)
+            }
+            StatusCode::INTERNAL_SERVER_ERROR => {
+                error!("server error on fetch: {}", response.text().await?);
+                Ok(None)
+            }
+            StatusCode::OK => {
+                let json = response.json().await?;
+                Ok(Some(json))
+            }
 
-        let json = response.json().await?;
-        Ok(Some(json))
+            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                let text = response.text().await?;
+                warn!("error in data passed in: {}", text);
+                Err(HandlerError::ApiError)
+            }
+            _ => {
+                let text = response.text().await?;
+                warn!("unknown error code: {}, {}", text, status);
+                Err(HandlerError::ApiError)
+            }
+        }
     }
 
     #[cfg(test)]
@@ -188,6 +208,31 @@ pub mod fetch_commands {
                 )
                 .with_status(404)
                 .with_body(r#"{"error": "not found"}"#)
+                .create();
+
+            let result = super::fetch_commands(device_id.to_string(), &config).await;
+
+            assert!(result.is_ok());
+            let response = result.unwrap();
+            assert!(response.is_none());
+            mock.assert();
+        }
+
+        #[tokio::test]
+        async fn test_fetch_commands_500_fail() {
+            before_each();
+
+            let (data, _) = get_json_payload();
+            let device_id = data.command.device_id;
+            let (mut server, config) = setup_server();
+
+            let mock = server
+                .mock(
+                    "GET",
+                    format!("/commands/recent?device_id={}", &device_id).as_str(),
+                )
+                .with_status(500)
+                .with_body("server error")
                 .create();
 
             let result = super::fetch_commands(device_id.to_string(), &config).await;
