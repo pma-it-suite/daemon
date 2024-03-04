@@ -20,3 +20,6 @@ simple_logger = "4.3.3"
 
 [dev-dependencies]
 mockito = "1.4.0"
+
+[package.metadata.scripts]
+fix = "cargo clippy --fix  --allow-dirty && cargo fmt"

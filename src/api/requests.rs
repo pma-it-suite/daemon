@@ -1,7 +1,7 @@
 use crate::models::HandlerError;
 pub type ApiResult<T> = Result<T, HandlerError>;
 
-fn get_port_string_if_any() -> String {
+pub fn get_port_string_if_any() -> String {
     "5001".to_string()
 }
 
@@ -116,38 +116,20 @@ pub mod fetch_commands {
     #[cfg(test)]
     mod test {
         use crate::{
-            api::{
-                models::fetch_commands::FetchRecentCommandResponse,
-                requests::get_port_string_if_any,
-            },
+            api::models::fetch_commands::FetchRecentCommandResponse,
             models::db::commands::Command,
+            test_commons::{before_each, setup_server},
         };
-
-        fn before_each() {
-            std::env::set_var("RUST_LOG", "debug");
-            simple_logger::SimpleLogger::new().env().init().unwrap();
-        }
 
         fn get_json_payload() -> String {
             serde_json::to_string(&FetchRecentCommandResponse::new(Command::default())).unwrap()
-        }
-
-        fn setup_server() -> mockito::Server {
-            let opts = mockito::ServerOpts {
-                host: "127.0.0.1",
-                port: get_port_string_if_any().parse::<u16>().unwrap(),
-                ..Default::default()
-            };
-            mockito::Server::new_with_opts(opts)
         }
 
         #[tokio::test]
         async fn test_fetch_commands() {
             before_each();
 
-
             let device_id = "testid";
-
             let json = get_json_payload();
             let mut server = setup_server();
 
