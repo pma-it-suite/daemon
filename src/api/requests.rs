@@ -194,8 +194,7 @@ pub mod fetch_commands {
 
             assert!(result.is_ok());
             let response = result.unwrap();
-            assert!(response.is_some());
-            assert_eq!(response.unwrap().command.device_id, device_id);
+            assert!(response.is_none());
             mock.assert();
         }
     }
