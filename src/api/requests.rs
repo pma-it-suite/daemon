@@ -117,23 +117,26 @@ pub mod fetch_commands {
     mod test {
         use crate::{
             api::models::fetch_commands::FetchRecentCommandResponse,
-            models::db::commands::Command,
+            models::db::{commands::Command, common::Id},
             test_commons::{before_each, setup_server},
         };
 
-        fn get_json_payload() -> String {
-            serde_json::to_string(&FetchRecentCommandResponse::new(Command::default())).unwrap()
+        fn get_json_payload() -> (FetchRecentCommandResponse, String) {
+            let data = FetchRecentCommandResponse::new(Command::default());
+            let data_string = serde_json::to_string(&data).unwrap();
+
+            (data, data_string)
         }
 
         #[tokio::test]
         async fn test_fetch_commands() {
             before_each();
 
-            let device_id = "testid";
-            let json = get_json_payload();
+            let (data, json) = get_json_payload();
+            let device_id = data.command.device_id;
             let mut server = setup_server();
 
-            server
+            let mock = server
                 .mock(
                     "GET",
                     format!("/commands/recent?device_id={}", &device_id).as_str(),
@@ -144,10 +147,11 @@ pub mod fetch_commands {
 
             let result = super::fetch_commands(device_id.to_string()).await;
 
-            dbg!("{}", &result);
             assert!(result.is_ok());
             let response = result.unwrap();
             assert!(response.is_some());
+            assert_eq!(response.unwrap().command.device_id, device_id);
+            mock.assert();
         }
     }
 }
