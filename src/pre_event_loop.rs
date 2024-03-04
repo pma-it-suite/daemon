@@ -1,7 +1,7 @@
 use log::info;
 
 use crate::{
-    api,
+    api::{self, requests::ApiConfig},
     localstore::{query_data, write_single},
     models::{db::common::Id, HandlerError},
 };
@@ -45,8 +45,12 @@ pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
     info!("registering device with name: {}", device_name);
 
     Ok(
-        api::requests::register_device::register_device(user_id, device_name)
-            .await?
-            .device_id,
+        api::requests::register_device::register_device(
+            user_id,
+            device_name,
+            &ApiConfig::default(),
+        )
+        .await?
+        .device_id,
     )
 }

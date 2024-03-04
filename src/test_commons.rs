@@ -1,14 +1,13 @@
 use std::sync::Mutex;
 
-use crate::api::requests::get_port_string_if_any;
+use crate::api::requests::ApiConfig;
 use lazy_static::lazy_static;
 use mockito;
 
-// wrap with mutex
-// static mut SETUP_DONE: bool = false;
 lazy_static! {
     static ref SETUP_DONE: Mutex<bool> = Mutex::new(false);
 }
+// make a mutex lock
 
 fn once() {
     let mut setup_done = SETUP_DONE.lock().unwrap();
@@ -24,11 +23,18 @@ pub fn before_each() {
     once();
 }
 
-pub fn setup_server() -> mockito::Server {
+pub fn get_api_config_with_port(port: u16) -> ApiConfig {
+    ApiConfig::new("localhost".to_string(), Some(port))
+}
+
+pub fn setup_server() -> (mockito::Server, ApiConfig) {
     let opts = mockito::ServerOpts {
         host: "127.0.0.1",
-        port: get_port_string_if_any().parse::<u16>().unwrap(),
         ..Default::default()
     };
-    mockito::Server::new_with_opts(opts)
+    let server = mockito::Server::new_with_opts(opts);
+
+    let port = server.socket_address().port();
+
+    (server, get_api_config_with_port(port))
 }

@@ -4,7 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::{
-    api,
+    api::{self, requests::ApiConfig},
     models::{
         db::{
             commands::{Command, CommandStatus},
@@ -79,7 +79,9 @@ pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), Ha
 }
 
 pub async fn fetch_command(device_id: &Id) -> Result<Option<Command>, HandlerError> {
-    let response = api::requests::fetch_commands::fetch_commands(device_id.clone()).await?;
+    let response =
+        api::requests::fetch_commands::fetch_commands(device_id.clone(), &ApiConfig::default())
+            .await?;
     if response.is_none() {
         Ok(None)
     } else {
@@ -92,7 +94,12 @@ pub async fn update_command_status(
     command: &Command,
     new_status: CommandStatus,
 ) -> Result<(), HandlerError> {
-    api::requests::update_command_status::update_command_status(command, new_status).await?;
+    api::requests::update_command_status::update_command_status(
+        command,
+        new_status,
+        &ApiConfig::default(),
+    )
+    .await?;
 
     Ok(())
 }
