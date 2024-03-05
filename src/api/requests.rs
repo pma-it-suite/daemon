@@ -134,8 +134,8 @@ pub mod update_command_status {
             let result = super::update_command_status(&command, new_status, &config).await;
 
             assert!(result.is_ok());
-            let response = result.unwrap();
-            assert_eq!(response, ());
+            result.unwrap();
+            // assert_eq!(response, ());
             mock.assert();
         }
 
@@ -223,14 +223,14 @@ pub mod fetch_commands {
         on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, T>,
     ) -> Result<T, HandlerError> {
         let status = response.status();
-        // let text = response.text().await?;
-        let text = "test";
         match status {
             StatusCode::NOT_FOUND => {
+                let text = response.text().await?;
                 warn!("No commands found: {}", &text);
                 Err(HandlerError::NotFound)
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
+                let text = response.text().await?;
                 error!("server error on fetch: {}", &text);
                 Err(HandlerError::ApiError)
             }
@@ -240,10 +240,12 @@ pub mod fetch_commands {
             }
 
             StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                let text = response.text().await?;
                 warn!("error in data passed in: {}", &text);
                 Err(HandlerError::ApiError)
             }
             _ => {
+                let text = response.text().await?;
                 warn!("unknown error code: {}, {}", &text, status);
                 Err(HandlerError::ApiError)
             }

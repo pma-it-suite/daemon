@@ -23,5 +23,5 @@ futures = "0.3.30"
 mockito = "1.4.0"
 
 [package.metadata.scripts]
-fix = "cargo clippy --fix  --allow-dirty && cargo fmt"
+fix = "cargo clippy --fix  --allow-dirty --broken-code && cargo fmt"
 cov = "cargo llvm-cov"
