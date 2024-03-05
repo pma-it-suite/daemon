@@ -209,6 +209,7 @@ pub mod update_command_status {
 
             let mock = server
                 .mock("PATCH", "/commands/update/status")
+                .with_status(500)
                 .with_body(get_500_json_string())
                 .create();
 
@@ -314,7 +315,7 @@ pub mod fetch_commands {
             let result = super::fetch_commands(device_id.to_string(), &config).await;
 
             assert!(result.is_err());
-            assert!(matches!(result.err().unwrap(), HandlerError::ServerError));
+            assert!(matches!(result.err().unwrap(), HandlerError::NotFound));
             mock.assert();
         }
 
