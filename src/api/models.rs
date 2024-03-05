@@ -7,6 +7,15 @@ pub mod update_command_status {
         pub command_id: Id,
         pub status: CommandStatus,
     }
+
+    impl UpdateCommandStatusRequest {
+        pub fn new(command_id: Id) -> Self {
+            Self {
+                command_id,
+                status: CommandStatus::default(),
+            }
+        }
+    }
 }
 
 pub mod fetch_commands {

@@ -89,6 +89,12 @@ pub mod db {
             Sent,
             Received,
         }
+
+        impl Default for CommandStatus {
+            fn default() -> Self {
+                Self::Received
+            }
+        }
     }
 
     pub mod devices {

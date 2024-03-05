@@ -1,3 +1,5 @@
+#![feature(async_closure)]
+
 use main_event_loop::run_main_event_loop;
 use models::HandlerError;
 use pre_event_loop::{get_device_id, get_user_id};

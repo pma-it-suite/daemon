@@ -97,6 +97,87 @@ pub mod update_command_status {
 
         Ok(())
     }
+
+    #[cfg(test)]
+    mod test {
+        use crate::{
+            api::models::update_command_status::UpdateCommandStatusRequest,
+            models::db::{
+                commands::{Command, CommandStatus},
+                common::{HasId, Id},
+            },
+            test_commons::{before_each, get_404_json_string, get_500_json_string, setup_server},
+        };
+
+        fn get_json_payload(command_id: Id) -> (UpdateCommandStatusRequest, String) {
+            let data = UpdateCommandStatusRequest::new(command_id);
+            let data_string = serde_json::to_string(&data).unwrap();
+
+            (data, data_string)
+        }
+
+        #[tokio::test]
+        async fn test_fetch_commands() {
+            before_each();
+
+            let command = Command::default();
+            let (_, json) = get_json_payload(command.get_id().clone());
+            let (mut server, config) = setup_server();
+
+            let mock = server
+                .mock("PATCH", "/commands/update/status")
+                .with_status(200)
+                .with_body(json)
+                .create();
+
+            let new_status = CommandStatus::Terminated;
+            let result = super::update_command_status(&command, new_status, &config).await;
+
+            assert!(result.is_ok());
+            let response = result.unwrap();
+            assert_eq!(response, ());
+            mock.assert();
+        }
+
+        #[tokio::test]
+        async fn test_fetch_commands_404_fail() {
+            before_each();
+
+            let command = Command::default();
+            let (mut server, config) = setup_server();
+
+            let mock = server
+                .mock("PATCH", "/commands/update/status")
+                .with_status(404)
+                .with_body(get_404_json_string())
+                .create();
+
+            let new_status = CommandStatus::Terminated;
+            let result = super::update_command_status(&command, new_status, &config).await;
+
+            assert!(result.is_err());
+            mock.assert();
+        }
+
+        #[tokio::test]
+        async fn test_fetch_commands_500_fail() {
+            before_each();
+
+            let command = Command::default();
+            let (mut server, config) = setup_server();
+
+            let mock = server
+                .mock("PATCH", "/commands/update/status")
+                .with_body(get_500_json_string())
+                .create();
+
+            let new_status = CommandStatus::Terminated;
+            let result = super::update_command_status(&command, new_status, &config).await;
+
+            assert!(result.is_err());
+            mock.assert();
+        }
+    }
 }
 
 pub mod fetch_commands {
@@ -125,28 +206,45 @@ pub mod fetch_commands {
         let status = response.status();
         info!("Response status for fetch commands: {}", status);
 
+        let bind = |response: reqwest::Response| -> BoxFuture<'static, FetchRecentCommandResponse> {
+            Box::pin(async move { response.json().await.expect("error in json response") })
+        };
+        let resp = handle_response(response, bind).await;
+
+        match resp {
+            Ok(val) => Ok(Some(val)),
+            Err(err) => Err(err),
+        }
+    }
+    use futures::future::BoxFuture;
+
+    async fn handle_response<T>(
+        response: reqwest::Response,
+        on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, T>,
+    ) -> Result<T, HandlerError> {
+        let status = response.status();
+        // let text = response.text().await?;
+        let text = "test";
         match status {
             StatusCode::NOT_FOUND => {
-                warn!("No commands found: {}", response.text().await?);
-                Ok(None)
+                warn!("No commands found: {}", &text);
+                Err(HandlerError::NotFound)
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
-                error!("server error on fetch: {}", response.text().await?);
-                Ok(None)
+                error!("server error on fetch: {}", &text);
+                Err(HandlerError::ApiError)
             }
             StatusCode::OK => {
-                let json = response.json().await?;
-                Ok(Some(json))
+                Ok(on_ok(response).await)
+                // let json = response.json().await?;
             }
 
             StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
-                let text = response.text().await?;
-                warn!("error in data passed in: {}", text);
+                warn!("error in data passed in: {}", &text);
                 Err(HandlerError::ApiError)
             }
             _ => {
-                let text = response.text().await?;
-                warn!("unknown error code: {}, {}", text, status);
+                warn!("unknown error code: {}, {}", &text, status);
                 Err(HandlerError::ApiError)
             }
         }
@@ -157,7 +255,7 @@ pub mod fetch_commands {
         use crate::{
             api::models::fetch_commands::FetchRecentCommandResponse,
             models::db::commands::Command,
-            test_commons::{before_each, setup_server},
+            test_commons::{before_each, get_404_json_string, get_500_json_string, setup_server},
         };
 
         fn get_json_payload() -> (FetchRecentCommandResponse, String) {
@@ -207,7 +305,7 @@ pub mod fetch_commands {
                     format!("/commands/recent?device_id={}", &device_id).as_str(),
                 )
                 .with_status(404)
-                .with_body(r#"{"error": "not found"}"#)
+                .with_body(get_404_json_string())
                 .create();
 
             let result = super::fetch_commands(device_id.to_string(), &config).await;
@@ -232,7 +330,7 @@ pub mod fetch_commands {
                     format!("/commands/recent?device_id={}", &device_id).as_str(),
                 )
                 .with_status(500)
-                .with_body("server error")
+                .with_body(get_500_json_string())
                 .create();
 
             let result = super::fetch_commands(device_id.to_string(), &config).await;

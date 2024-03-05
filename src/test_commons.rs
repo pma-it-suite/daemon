@@ -37,3 +37,11 @@ pub fn setup_server() -> (mockito::Server, ApiConfig) {
 
     (server, get_api_config_with_port(port))
 }
+
+pub fn get_404_json_string() -> String {
+    r#"{"error": "not found"}"#.to_string()
+}
+
+pub fn get_500_json_string() -> String {
+    "server error".to_string()
+}
