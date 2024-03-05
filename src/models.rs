@@ -16,7 +16,7 @@ pub enum HandlerError {
     Unknown,
     #[error("unknown error")]
     DecodingError(#[from] std::string::FromUtf8Error),
-    #[error("404")]
+    #[error("not found error 404")]
     NotFound,
     #[error("cmd error")]
     CmdError(Id),
@@ -24,6 +24,10 @@ pub enum HandlerError {
     ParseError(String),
     #[error("db error")]
     DbError,
+    #[error("server error 500")]
+    ServerError,
+    #[error("input error 4XX")]
+    InputError,
 }
 
 pub mod db {

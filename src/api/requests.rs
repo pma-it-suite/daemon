@@ -42,11 +42,11 @@ impl Default for ApiConfig {
 
 async fn handle_response<T>(
     response: reqwest::Response,
-    on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, T>,
+    on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, Result<T, HandlerError>>,
 ) -> Result<T, HandlerError> {
     let status = response.status();
     if let StatusCode::OK = status {
-        Ok(on_ok(response).await)
+        Ok(on_ok(response).await?)
     } else {
         let text = response.text().await?;
         match status {
@@ -56,11 +56,11 @@ async fn handle_response<T>(
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
                 error!("server error on fetch: {}", &text);
-                Err(HandlerError::ApiError)
+                Err(HandlerError::ServerError)
             }
             StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
                 warn!("error in data passed in: {}", &text);
-                Err(HandlerError::ApiError)
+                Err(HandlerError::InputError)
             }
             _ => {
                 warn!("unknown error code: {}, {}", &text, status);
@@ -71,8 +71,10 @@ async fn handle_response<T>(
 }
 
 pub mod register_device {
+    use futures::future::BoxFuture;
+
     use crate::api::models::register_device::{RegisterDeviceRequest, RegisterDeviceResponse};
-    use crate::api::requests::{get_client, ApiResult};
+    use crate::api::requests::{get_client, handle_response, ApiResult};
     use crate::models::db::common::Id;
 
     use super::ApiConfig;
@@ -95,18 +97,23 @@ pub mod register_device {
         let status = response.status();
         println!("Response status: {}", status);
 
-        let json = response.json().await?;
-        Ok(json)
+        let bind =
+            |response: reqwest::Response| -> BoxFuture<'static, ApiResult<RegisterDeviceResponse>> {
+                Box::pin(async move { Ok(response.json().await?) })
+            };
+        handle_response(response, bind).await
     }
 }
 
 pub mod update_command_status {
+    use futures::future::BoxFuture;
+
     use crate::api::models::update_command_status::UpdateCommandStatusRequest;
     use crate::api::requests::{get_client, ApiResult};
     use crate::models::db::commands::{Command, CommandStatus};
     use crate::models::db::common::HasId;
 
-    use super::ApiConfig;
+    use super::{handle_response, ApiConfig};
 
     pub async fn update_command_status(
         command: &Command,
@@ -122,22 +129,23 @@ pub mod update_command_status {
 
         let response = get_client().patch(url).json(&request).send().await?;
 
-        let status = response.status();
-        println!("Response status: {}", status);
+        let bind = |_: reqwest::Response| -> BoxFuture<'static, ApiResult<()>> {
+            Box::pin(async move { Ok(()) })
+        };
 
-        let text = response.text().await?;
-        println!("Response text: {}", text);
-
-        Ok(())
+        handle_response(response, bind).await
     }
 
     #[cfg(test)]
     mod test {
         use crate::{
             api::models::update_command_status::UpdateCommandStatusRequest,
-            models::db::{
-                commands::{Command, CommandStatus},
-                common::{HasId, Id},
+            models::{
+                db::{
+                    commands::{Command, CommandStatus},
+                    common::{HasId, Id},
+                },
+                HandlerError,
             },
             test_commons::{before_each, get_404_json_string, get_500_json_string, setup_server},
         };
@@ -188,6 +196,7 @@ pub mod update_command_status {
             let result = super::update_command_status(&command, new_status, &config).await;
 
             assert!(result.is_err());
+            assert!(matches!(result.err().unwrap(), HandlerError::NotFound));
             mock.assert();
         }
 
@@ -207,6 +216,7 @@ pub mod update_command_status {
             let result = super::update_command_status(&command, new_status, &config).await;
 
             assert!(result.is_err());
+            assert!(matches!(result.err().unwrap(), HandlerError::ServerError));
             mock.assert();
         }
     }
@@ -237,22 +247,17 @@ pub mod fetch_commands {
         let status = response.status();
         info!("Response status for fetch commands: {}", status);
 
-        let bind = |response: reqwest::Response| -> BoxFuture<'static, FetchRecentCommandResponse> {
-            Box::pin(async move { response.json().await.expect("error in json response") })
+        let bind = |response: reqwest::Response| -> BoxFuture<'static, ApiResult<Option<FetchRecentCommandResponse>>> {
+            Box::pin(async move { Ok(response.json().await?) })
         };
-        let resp = handle_response(response, bind).await;
-
-        match resp {
-            Ok(val) => Ok(Some(val)),
-            Err(err) => Err(err),
-        }
+        handle_response(response, bind).await
     }
 
     #[cfg(test)]
     mod test {
         use crate::{
             api::models::fetch_commands::FetchRecentCommandResponse,
-            models::db::commands::Command,
+            models::{db::commands::Command, HandlerError},
             test_commons::{before_each, get_404_json_string, get_500_json_string, setup_server},
         };
 
@@ -308,9 +313,8 @@ pub mod fetch_commands {
 
             let result = super::fetch_commands(device_id.to_string(), &config).await;
 
-            assert!(result.is_ok());
-            let response = result.unwrap();
-            assert!(response.is_none());
+            assert!(result.is_err());
+            assert!(matches!(result.err().unwrap(), HandlerError::ServerError));
             mock.assert();
         }
 
@@ -333,9 +337,8 @@ pub mod fetch_commands {
 
             let result = super::fetch_commands(device_id.to_string(), &config).await;
 
-            assert!(result.is_ok());
-            let response = result.unwrap();
-            assert!(response.is_none());
+            assert!(result.is_err());
+            assert!(matches!(result.err().unwrap(), HandlerError::ServerError));
             mock.assert();
         }
     }
