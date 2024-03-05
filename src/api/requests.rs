@@ -1,4 +1,7 @@
 use crate::models::HandlerError;
+use futures::future::BoxFuture;
+use log::{error, warn};
+use reqwest::StatusCode;
 pub type ApiResult<T> = Result<T, HandlerError>;
 
 fn get_client() -> reqwest::Client {
@@ -33,6 +36,36 @@ impl Default for ApiConfig {
         ApiConfig {
             host: "localhost".to_string(),
             port: Some(5001),
+        }
+    }
+}
+
+async fn handle_response<T>(
+    response: reqwest::Response,
+    on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, T>,
+) -> Result<T, HandlerError> {
+    let status = response.status();
+    if let StatusCode::OK = status {
+        Ok(on_ok(response).await)
+    } else {
+        let text = response.text().await?;
+        match status {
+            StatusCode::NOT_FOUND => {
+                warn!("No commands found: {}", &text);
+                Err(HandlerError::NotFound)
+            }
+            StatusCode::INTERNAL_SERVER_ERROR => {
+                error!("server error on fetch: {}", &text);
+                Err(HandlerError::ApiError)
+            }
+            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                warn!("error in data passed in: {}", &text);
+                Err(HandlerError::ApiError)
+            }
+            _ => {
+                warn!("unknown error code: {}, {}", &text, status);
+                Err(HandlerError::ApiError)
+            }
         }
     }
 }
@@ -117,7 +150,7 @@ pub mod update_command_status {
         }
 
         #[tokio::test]
-        async fn test_fetch_commands() {
+        async fn test_update_command() {
             before_each();
 
             let command = Command::default();
@@ -135,12 +168,11 @@ pub mod update_command_status {
 
             assert!(result.is_ok());
             result.unwrap();
-            // assert_eq!(response, ());
             mock.assert();
         }
 
         #[tokio::test]
-        async fn test_fetch_commands_404_fail() {
+        async fn test_update_commands_404_fail() {
             before_each();
 
             let command = Command::default();
@@ -160,7 +192,7 @@ pub mod update_command_status {
         }
 
         #[tokio::test]
-        async fn test_fetch_commands_500_fail() {
+        async fn test_update_commands_500_fail() {
             before_each();
 
             let command = Command::default();
@@ -181,13 +213,12 @@ pub mod update_command_status {
 }
 
 pub mod fetch_commands {
-    use log::{error, info, warn};
-    use reqwest::StatusCode;
+    use futures::future::BoxFuture;
+    use log::info;
 
     use crate::api::models::fetch_commands::FetchRecentCommandResponse;
-    use crate::api::requests::{get_client, ApiResult};
+    use crate::api::requests::{get_client, handle_response, ApiResult};
     use crate::models::db::common::Id;
-    use crate::models::HandlerError;
 
     use super::ApiConfig;
 
@@ -214,41 +245,6 @@ pub mod fetch_commands {
         match resp {
             Ok(val) => Ok(Some(val)),
             Err(err) => Err(err),
-        }
-    }
-    use futures::future::BoxFuture;
-
-    async fn handle_response<T>(
-        response: reqwest::Response,
-        on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, T>,
-    ) -> Result<T, HandlerError> {
-        let status = response.status();
-        match status {
-            StatusCode::NOT_FOUND => {
-                let text = response.text().await?;
-                warn!("No commands found: {}", &text);
-                Err(HandlerError::NotFound)
-            }
-            StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = response.text().await?;
-                error!("server error on fetch: {}", &text);
-                Err(HandlerError::ApiError)
-            }
-            StatusCode::OK => {
-                Ok(on_ok(response).await)
-                // let json = response.json().await?;
-            }
-
-            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
-                let text = response.text().await?;
-                warn!("error in data passed in: {}", &text);
-                Err(HandlerError::ApiError)
-            }
-            _ => {
-                let text = response.text().await?;
-                warn!("unknown error code: {}, {}", &text, status);
-                Err(HandlerError::ApiError)
-            }
         }
     }
 
