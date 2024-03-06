@@ -45,8 +45,24 @@ pub mod register_device {
         pub user_id: Id,
     }
 
+    impl Default for RegisterDeviceRequest {
+        fn default() -> Self {
+            RegisterDeviceRequest {
+                device_name: "testdevicename".to_string(),
+                issuer_id: "testissuerid".to_string(),
+                user_id: "testuserid".to_string(),
+            }
+        }
+    }
+
     #[derive(Serialize, Deserialize, Debug)]
     pub struct RegisterDeviceResponse {
         pub device_id: Id,
+    }
+
+    impl RegisterDeviceResponse {
+        pub fn new(device_id: Id) -> Self {
+            RegisterDeviceResponse { device_id }
+        }
     }
 }
