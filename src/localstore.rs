@@ -265,4 +265,47 @@ mod test {
         assert!(!does_file_contain(test_val.as_str()));
         assert!(does_file_contain(second_test_val));
     }
+
+    #[test]
+    fn test_query_works() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+
+        let data = get_test_data();
+        assert!(!does_default_file_exist());
+
+        let _ = get_handle().unwrap();
+        let result = super::write_data(data);
+        assert!(result.is_ok());
+
+        assert!(does_default_file_exist());
+        let (test_key, test_val) = get_test_key_val();
+        assert!(does_file_contain(test_key.as_str()));
+        assert!(does_file_contain(test_val.as_str()));
+
+        let query_result = super::query_data(test_key.as_str());
+        assert!(query_result.is_ok());
+        let response = query_result.unwrap();
+        assert!(response.is_some());
+        assert_eq!(response.unwrap(), test_val);
+    }
+
+    #[test]
+    fn test_query_fails_when_missing_key() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+
+        assert!(!does_default_file_exist());
+
+        let _ = get_handle().unwrap();
+
+        assert!(does_default_file_exist());
+        let (test_key, _) = get_test_key_val();
+        assert!(!does_file_contain(test_key.as_str()));
+
+        let query_result = super::query_data(test_key.as_str());
+        assert!(query_result.is_err());
+    }
 }
