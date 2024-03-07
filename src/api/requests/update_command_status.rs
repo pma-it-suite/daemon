@@ -1,4 +1,3 @@
-
 use futures::future::BoxFuture;
 
 use crate::api::models::update_command_status::UpdateCommandStatusRequest;

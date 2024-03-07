@@ -1,4 +1,3 @@
-
 use futures::future::BoxFuture;
 
 use crate::api::models::register_device::{RegisterDeviceRequest, RegisterDeviceResponse};

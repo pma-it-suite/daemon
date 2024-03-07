@@ -1,5 +1,5 @@
 use crate::models::HandlerError;
-use jfs::{self, Store};
+use jfs::{self};
 use lazy_static::lazy_static;
 use log::{debug, info};
 use std::collections::HashMap;
@@ -8,14 +8,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub struct StoreConfig {
-    pub path: PathBuf
+    pub path: PathBuf,
 }
 
 impl StoreConfig {
     pub fn new(path: PathBuf) -> Self {
-        StoreConfig {
-            path
-        }
+        StoreConfig { path }
     }
 
     pub fn path(&self) -> &PathBuf {
@@ -28,13 +26,13 @@ impl StoreConfig {
 }
 
 fn get_default_filepath() -> String {
-"localstore.json".to_string()
+    "localstore.json".to_string()
 }
 
-impl Default for StoreConfig{
+impl Default for StoreConfig {
     fn default() -> Self {
         StoreConfig {
-            path: PathBuf::from(get_default_filepath())
+            path: PathBuf::from(get_default_filepath()),
         }
     }
 }
@@ -56,7 +54,8 @@ fn get_handle(config: StoreConfig) -> Result<jfs::Store, HandlerError> {
         // and write a {} to it
         std::fs::OpenOptions::new()
             .write(true)
-            .open(&file_path)?.write_all(b"{}")?;
+            .open(&file_path)?
+            .write_all(b"{}")?;
     }
 
     info!("creating or getting store from path: {:#?}", &file_path);
@@ -122,12 +121,14 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 mod test {
     use tempdir::TempDir;
 
-    use crate::{localstore::{get_default_filepath, StoreConfig}, test_commons::before_each};
+    use crate::{
+        localstore::{get_default_filepath, StoreConfig},
+        test_commons::before_each,
+    };
 
-fn get_tempdir() -> TempDir {
+    fn get_tempdir() -> TempDir {
         TempDir::new("test-localstore").expect("should be able to create tempdir")
-}
-
+    }
 
     #[test]
     fn test_get_handle_creates_file() {
@@ -136,9 +137,7 @@ fn get_tempdir() -> TempDir {
         // the prefix "example".
         // check if the file exists at the get_filepath
         let dir = get_tempdir();
-        let mut path = StoreConfig::new(
-            dir.path().to_path_buf()
-        );
+        let mut path = StoreConfig::new(dir.path().to_path_buf());
         path.append_path(&get_default_filepath());
 
         let test_path = path.path().clone();
