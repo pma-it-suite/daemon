@@ -71,13 +71,17 @@ fn get_handle() -> Result<jfs::Store, HandlerError> {
     Ok(db)
 }
 
+fn get_user_id() -> String {
+    "ee9470de-54a4-419c-b34a-ba2fa18731d8".to_string()
+}
+
 fn init_db(db: &jfs::Store) -> Result<(), HandlerError> {
     debug!("filepath for store on init is: {:#?}", &db.path());
     let key = "user_id";
     let resp = query_internal(db, key);
     if resp.is_err() || resp?.is_none() {
         debug!("user_id not set, setting to default");
-        let user_id = "ee9470de-54a4-419c-b34a-ba2fa18731d8";
+        let user_id = get_user_id();
         db.save_with_id(&user_id.to_string(), key)?;
         info!("user_id set to default: {}", user_id);
     }
@@ -114,20 +118,97 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 #[cfg(test)]
 mod test {
 
-    use crate::{localstore::get_default_filepath, test_commons::before_each};
+    use lazy_static::lazy_static;
+
+    use crate::{
+        localstore::{get_default_filepath, get_user_id},
+        test_commons::before_each,
+    };
+    use std::{io::Write as _, sync::Mutex};
+
+    fn does_default_file_exist() -> bool {
+        let test_path = get_default_filepath();
+        std::path::Path::new(&test_path).exists()
+    }
+
+    fn get_file_data() -> String {
+        let test_path = get_default_filepath();
+        std::fs::read_to_string(&test_path).unwrap().to_string()
+    }
+
+    fn does_file_contain(data: &str) -> bool {
+        let file_data = get_file_data();
+        file_data.contains(data)
+    }
+
+    fn delete_file_if_exists() {
+        let test_path = get_default_filepath();
+        if std::path::Path::new(&test_path).exists() {
+            std::fs::remove_file(&test_path).unwrap();
+        }
+    }
+
+    fn write_to_file(data: &str) {
+        let file_path = get_default_filepath();
+        std::fs::File::create(&file_path).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&file_path)
+            .unwrap()
+            .write_all(data.as_bytes())
+            .unwrap();
+    }
+
+    lazy_static! {
+        static ref LOCK: Mutex<()> = Mutex::new(());
+    }
 
     #[test]
     fn test_get_handle_creates_file() {
+        let _tmp = LOCK.lock().unwrap();
         before_each();
-        let test_path = get_default_filepath();
-        let mut does_exist = std::path::Path::new(&test_path).exists();
-        assert!(!does_exist);
+        delete_file_if_exists();
+        assert!(!does_default_file_exist());
 
         let result = super::get_handle();
-        dbg!(&result);
         assert!(result.is_ok());
 
-        does_exist = std::path::Path::new(&test_path).exists();
-        assert!(does_exist);
+        assert!(does_default_file_exist());
+    }
+
+    #[test]
+    fn test_db_init_happens_if_file_empty() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+        assert!(!does_default_file_exist());
+
+        let result = super::get_handle();
+        assert!(result.is_ok());
+
+        assert!(does_default_file_exist());
+        dbg!(&get_file_data());
+        assert!(does_file_contain(&get_user_id()));
+    }
+
+    #[test]
+    fn test_db_init_does_not_happens_if_file_populated() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+        let test_id = "testid";
+        let test_data = r#"{"user_id": ""#.to_owned() + test_id + r#""}"#;
+        dbg!(&test_data);
+        write_to_file(&test_data);
+
+        assert!(does_default_file_exist());
+        assert!(does_file_contain(&test_data));
+
+        let result = super::get_handle();
+        assert!(result.is_ok());
+
+        assert!(does_default_file_exist());
+        assert!(!does_file_contain(&get_user_id()));
+        assert!(does_file_contain(test_id));
     }
 }
