@@ -3,7 +3,7 @@ use jfs::{self};
 use lazy_static::lazy_static;
 use log::{debug, info};
 use std::collections::HashMap;
-use std::hash::Hash;
+
 use std::io::Write as _;
 
 use std::sync::Mutex;
@@ -120,8 +120,6 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 mod test {
 
     use lazy_static::lazy_static;
-    use serde::{de, Deserialize, Serialize};
-    use warp::test;
 
     use crate::{
         localstore::{get_default_filepath, get_handle, get_user_id},
@@ -168,11 +166,9 @@ mod test {
 
     fn get_test_data() -> HashMap<String, String> {
         let mut map = HashMap::new();
-        vec![get_test_key_val()]
-            .iter()
-            .for_each(|(k, v)| {
-                map.insert(k.to_string(), v.to_string());
-            });
+        vec![get_test_key_val()].iter().for_each(|(k, v)| {
+            map.insert(k.to_string(), v.to_string());
+        });
         map
     }
 
@@ -238,7 +234,7 @@ mod test {
         let data = get_test_data();
         assert!(!does_default_file_exist());
 
-        let _  = get_handle().unwrap();
+        let _ = get_handle().unwrap();
         let result = super::write_data(data);
         assert!(result.is_ok());
 
@@ -260,7 +256,7 @@ mod test {
         data.insert(test_key.clone(), second_test_val.to_string());
         assert!(!does_default_file_exist());
 
-        let _  = get_handle().unwrap();
+        let _ = get_handle().unwrap();
         let result = super::write_data(data);
         assert!(result.is_ok());
 
