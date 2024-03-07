@@ -3,6 +3,7 @@ use jfs::{self};
 use lazy_static::lazy_static;
 use log::{debug, info};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::Write as _;
 
 use std::sync::Mutex;
@@ -82,7 +83,7 @@ fn init_db(db: &jfs::Store) -> Result<(), HandlerError> {
     if resp.is_err() || resp?.is_none() {
         debug!("user_id not set, setting to default");
         let user_id = get_user_id();
-        db.save_with_id(&user_id.to_string(), key)?;
+        db.save_with_id(&user_id, key)?;
         info!("user_id set to default: {}", user_id);
     }
     Ok(())
@@ -119,12 +120,14 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 mod test {
 
     use lazy_static::lazy_static;
+    use serde::{de, Deserialize, Serialize};
+    use warp::test;
 
     use crate::{
-        localstore::{get_default_filepath, get_user_id},
+        localstore::{get_default_filepath, get_handle, get_user_id},
         test_commons::before_each,
     };
-    use std::{io::Write as _, sync::Mutex};
+    use std::{collections::HashMap, io::Write as _, sync::Mutex};
 
     fn does_default_file_exist() -> bool {
         let test_path = get_default_filepath();
@@ -133,7 +136,7 @@ mod test {
 
     fn get_file_data() -> String {
         let test_path = get_default_filepath();
-        std::fs::read_to_string(&test_path).unwrap().to_string()
+        std::fs::read_to_string(test_path).unwrap()
     }
 
     fn does_file_contain(data: &str) -> bool {
@@ -157,6 +160,20 @@ mod test {
             .unwrap()
             .write_all(data.as_bytes())
             .unwrap();
+    }
+
+    fn get_test_key_val() -> (String, String) {
+        ("key1".to_string(), "value1".to_string())
+    }
+
+    fn get_test_data() -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        vec![get_test_key_val()]
+            .iter()
+            .for_each(|(k, v)| {
+                map.insert(k.to_string(), v.to_string());
+            });
+        map
     }
 
     lazy_static! {
@@ -209,6 +226,47 @@ mod test {
 
         assert!(does_default_file_exist());
         assert!(!does_file_contain(&get_user_id()));
-        assert!(does_file_contain(test_id));
+        assert!(does_file_contain(&test_data));
+    }
+
+    #[test]
+    fn test_insert_works() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+
+        let data = get_test_data();
+        assert!(!does_default_file_exist());
+
+        let _  = get_handle().unwrap();
+        let result = super::write_data(data);
+        assert!(result.is_ok());
+
+        assert!(does_default_file_exist());
+        let (test_key, test_val) = get_test_key_val();
+        assert!(does_file_contain(test_key.as_str()));
+        assert!(does_file_contain(test_val.as_str()));
+    }
+
+    #[test]
+    fn test_insert_replaces_existing_key() {
+        let _tmp = LOCK.lock().unwrap();
+        before_each();
+        delete_file_if_exists();
+
+        let (test_key, test_val) = get_test_key_val();
+        let second_test_val = "testval2";
+        let mut data = get_test_data();
+        data.insert(test_key.clone(), second_test_val.to_string());
+        assert!(!does_default_file_exist());
+
+        let _  = get_handle().unwrap();
+        let result = super::write_data(data);
+        assert!(result.is_ok());
+
+        assert!(does_default_file_exist());
+        assert!(does_file_contain(test_key.as_str()));
+        assert!(!does_file_contain(test_val.as_str()));
+        assert!(does_file_contain(second_test_val));
     }
 }
