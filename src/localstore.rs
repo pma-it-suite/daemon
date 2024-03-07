@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tempdir::TempDir;
 
 pub struct StoreConfig {
     pub path: PathBuf,
@@ -26,6 +27,19 @@ impl StoreConfig {
 }
 
 fn get_default_filepath() -> String {
+    if cfg!(test) {
+        let filepath = "localstore.json".to_string();
+        return TEMPDIR
+            .lock()
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .path()
+            .join(filepath)
+            .display()
+            .to_string();
+    }
     "localstore.json".to_string()
 }
 
@@ -39,6 +53,17 @@ impl Default for StoreConfig {
 
 lazy_static! {
     static ref HANDLE: Mutex<Result<jfs::Store, HandlerError>> = Mutex::new(get_handle_inner());
+}
+
+lazy_static! {
+    static ref TEMPDIR: Mutex<Option<TempDir>> = Mutex::new(get_tempdir());
+}
+
+fn get_tempdir() -> Option<TempDir> {
+    if cfg!(test) {
+        return Some(TempDir::new("test-localstore").expect("should be able to create tempdir"));
+    }
+    None
 }
 
 fn get_handle_inner() -> Result<jfs::Store, HandlerError> {
@@ -133,9 +158,6 @@ mod test {
     #[test]
     fn test_get_handle_creates_file() {
         before_each();
-        // Create a directory inside of `std::env::temp_dir()`, named with
-        // the prefix "example".
-        // check if the file exists at the get_filepath
         let dir = get_tempdir();
         let mut path = StoreConfig::new(dir.path().to_path_buf());
         path.append_path(&get_default_filepath());
