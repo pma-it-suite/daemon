@@ -24,6 +24,8 @@ pub mod api;
 pub mod localstore;
 pub mod main_event_loop;
 pub mod pre_event_loop;
+pub mod executor;
+
 
 #[cfg(test)]
 pub mod test_commons;
