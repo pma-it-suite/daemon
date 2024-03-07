@@ -8,24 +8,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tempdir::TempDir;
 
-pub struct StoreConfig {
-    pub path: PathBuf,
-}
-
-impl StoreConfig {
-    pub fn new(path: PathBuf) -> Self {
-        StoreConfig { path }
-    }
-
-    pub fn path(&self) -> &PathBuf {
-        &self.path
-    }
-
-    pub fn append_path(&mut self, path: &str) {
-        self.path.push(path);
-    }
-}
-
 fn get_default_filepath() -> String {
     if cfg!(test) {
         let filepath = "localstore.json".to_string();
@@ -43,16 +25,8 @@ fn get_default_filepath() -> String {
     "localstore.json".to_string()
 }
 
-impl Default for StoreConfig {
-    fn default() -> Self {
-        StoreConfig {
-            path: PathBuf::from(get_default_filepath()),
-        }
-    }
-}
-
 lazy_static! {
-    static ref HANDLE: Mutex<Result<jfs::Store, HandlerError>> = Mutex::new(get_handle_inner());
+    static ref HANDLE: Mutex<Result<jfs::Store, HandlerError>> = Mutex::new(get_handle());
 }
 
 lazy_static! {
@@ -66,13 +40,8 @@ fn get_tempdir() -> Option<TempDir> {
     None
 }
 
-fn get_handle_inner() -> Result<jfs::Store, HandlerError> {
-    let config = StoreConfig::default();
-    get_handle(config)
-}
-
-fn get_handle(config: StoreConfig) -> Result<jfs::Store, HandlerError> {
-    let file_path = config.path;
+fn get_handle() -> Result<jfs::Store, HandlerError> {
+    let file_path = get_default_filepath();
     // if file doesnt exist make it
     if !std::path::Path::new(&file_path).exists() {
         std::fs::File::create(&file_path)?;
@@ -146,27 +115,16 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 mod test {
     use tempdir::TempDir;
 
-    use crate::{
-        localstore::{get_default_filepath, StoreConfig},
-        test_commons::before_each,
-    };
-
-    fn get_tempdir() -> TempDir {
-        TempDir::new("test-localstore").expect("should be able to create tempdir")
-    }
+    use crate::{localstore::get_default_filepath, test_commons::before_each};
 
     #[test]
     fn test_get_handle_creates_file() {
         before_each();
-        let dir = get_tempdir();
-        let mut path = StoreConfig::new(dir.path().to_path_buf());
-        path.append_path(&get_default_filepath());
-
-        let test_path = path.path().clone();
+        let test_path = get_default_filepath();
         let mut does_exist = std::path::Path::new(&test_path).exists();
         assert!(!does_exist);
 
-        let result = super::get_handle(path);
+        let result = super::get_handle();
         dbg!(&result);
         assert!(result.is_ok());
 
