@@ -27,4 +27,3 @@ mockito = "1.4.0"
 fix = "cargo clippy --fix  --allow-dirty --broken-code && cargo fmt"
 cov = "cargo llvm-cov"
 covopen = "cargo llvm-cov --open"
-# test
