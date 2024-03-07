@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use log::{debug, info};
 use std::collections::HashMap;
 use std::io::Write as _;
-use std::path::PathBuf;
+
 use std::sync::Mutex;
 use tempdir::TempDir;
 
@@ -113,7 +113,6 @@ pub fn query_data(key: &str) -> Result<Option<String>, HandlerError> {
 
 #[cfg(test)]
 mod test {
-    use tempdir::TempDir;
 
     use crate::{localstore::get_default_filepath, test_commons::before_each};
 
