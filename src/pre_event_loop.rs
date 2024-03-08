@@ -59,11 +59,8 @@ pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
 mod test {
     use crate::{
         api::models::register_device::{RegisterDeviceRequest, RegisterDeviceResponse},
-        models::{db::common::Id, HandlerError},
-        test_commons::{
-            before_each, get_404_json_string, get_500_json_string, setup_server,
-            setup_server_with_default,
-        },
+        models::db::common::Id,
+        test_commons::{before_each, setup_server_with_default},
     };
 
     fn get_json_payload(device_id: Id) -> (RegisterDeviceResponse, String) {

@@ -3,6 +3,7 @@ use std::error::Error;
 use std::thread;
 use std::time::Duration;
 
+use crate::executor::handoff_command_to_executor;
 use crate::{
     api::{self, requests::ApiConfig},
     models::{
@@ -13,7 +14,6 @@ use crate::{
         HandlerError,
     },
 };
-use crate::executor::handoff_command_to_executor;
 
 const SLEEP_SHORT: u64 = 1;
 const SLEEP_MEDIUM: u64 = 5;
@@ -125,4 +125,3 @@ fn handle_err(err: HandlerError) {
         }
     }
 }
-

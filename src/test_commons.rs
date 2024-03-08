@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{borrow::Borrow, sync::Mutex};
 
 use crate::api::requests::ApiConfig;
 use lazy_static::lazy_static;
@@ -26,11 +26,14 @@ pub fn get_api_config_with_port(port: u16) -> ApiConfig {
     ApiConfig::new("http://127.0.0.1".to_string(), Some(port))
 }
 
+lazy_static! {
+    static ref CONFIG: ApiConfig = ApiConfig::default();
+}
+
 pub fn setup_server_with_default() -> mockito::Server {
-    let default_opts = ApiConfig::default();
     let opts = mockito::ServerOpts {
-        host: default_opts.host.as_str(),
-        port: default_opts.port.unwrap(),
+        host: CONFIG.borrow().host.as_str(),
+        port: CONFIG.borrow().port.unwrap(),
         ..Default::default()
     };
     mockito::Server::new_with_opts(opts)
