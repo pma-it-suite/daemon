@@ -69,6 +69,14 @@ mod test {
         (data, data_string)
     }
 
+    #[test]
+    fn test_get_user_id_ok() {
+        before_each();
+
+        let result = super::get_user_id();
+        assert!(result.is_ok());
+    }
+
     #[tokio::test]
     async fn test_register_device() {
         before_each();
