@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use crate::api::requests::ApiConfig;
 use lazy_static::lazy_static;
 use mockito;
-use reqwest::Url;
 
 lazy_static! {
     static ref SETUP_DONE: Mutex<bool> = Mutex::new(false);
@@ -30,7 +29,7 @@ pub fn get_api_config_with_port(port: u16) -> ApiConfig {
 pub fn setup_server_with_default() -> mockito::Server {
     let default_opts = ApiConfig::default();
     let opts = mockito::ServerOpts {
-        host: &default_opts.host.to_owned(),
+        host: default_opts.host.as_str(),
         port: default_opts.port.unwrap(),
         ..Default::default()
     };
