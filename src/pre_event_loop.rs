@@ -58,6 +58,7 @@ async fn register_device_inner(user_id: &Id, config: ApiConfig) -> Result<Id, Ha
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::await_holding_lock)]
     use std::sync::Mutex;
 
     use crate::{
