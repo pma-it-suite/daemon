@@ -17,3 +17,13 @@ tokio = { version = "1.32.0", features = ["full"] }
 warp = "0.3.5"
 log = "0.4.8"
 simple_logger = "4.3.3"
+futures = "0.3.30"
+tempdir = "0.3.7"
+
+[dev-dependencies]
+mockito = "1.4.0"
+
+[package.metadata.scripts]
+fix = "cargo clippy --fix  --allow-dirty --broken-code && cargo fmt"
+cov = "cargo llvm-cov"
+covopen = "cargo llvm-cov --open"

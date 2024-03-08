@@ -16,7 +16,7 @@ pub enum HandlerError {
     Unknown,
     #[error("unknown error")]
     DecodingError(#[from] std::string::FromUtf8Error),
-    #[error("404")]
+    #[error("not found error 404")]
     NotFound,
     #[error("cmd error")]
     CmdError(Id),
@@ -24,6 +24,10 @@ pub enum HandlerError {
     ParseError(String),
     #[error("db error")]
     DbError,
+    #[error("server error 500")]
+    ServerError,
+    #[error("input error 4XX")]
+    InputError,
 }
 
 pub mod db {
@@ -52,6 +56,19 @@ pub mod db {
             _id: Id,
         }
 
+        impl Default for Command {
+            fn default() -> Self {
+                Command {
+                    status: CommandStatus::Pending,
+                    args: None,
+                    name: CommandNames::Update,
+                    issuer_id: "default".to_string(),
+                    device_id: "default".to_string(),
+                    _id: "default".to_string(),
+                }
+            }
+        }
+
         impl HasId for Command {
             fn get_id(&self) -> &Id {
                 &self._id
@@ -75,6 +92,12 @@ pub mod db {
             Pending,
             Sent,
             Received,
+        }
+
+        impl Default for CommandStatus {
+            fn default() -> Self {
+                Self::Received
+            }
         }
     }
 

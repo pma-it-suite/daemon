@@ -3,8 +3,9 @@ use std::error::Error;
 use std::thread;
 use std::time::Duration;
 
+use crate::executor::handoff_command_to_executor;
 use crate::{
-    api,
+    api::{self, requests::ApiConfig},
     models::{
         db::{
             commands::{Command, CommandStatus},
@@ -13,8 +14,6 @@ use crate::{
         HandlerError,
     },
 };
-
-use crate::main_event_loop::executor::handoff_command_to_executor;
 
 const SLEEP_SHORT: u64 = 1;
 const SLEEP_MEDIUM: u64 = 5;
@@ -79,7 +78,9 @@ pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), Ha
 }
 
 pub async fn fetch_command(device_id: &Id) -> Result<Option<Command>, HandlerError> {
-    let response = api::requests::fetch_commands::fetch_commands(device_id.clone()).await?;
+    let response =
+        api::requests::fetch_commands::fetch_commands(device_id.clone(), &ApiConfig::default())
+            .await?;
     if response.is_none() {
         Ok(None)
     } else {
@@ -92,7 +93,12 @@ pub async fn update_command_status(
     command: &Command,
     new_status: CommandStatus,
 ) -> Result<(), HandlerError> {
-    api::requests::update_command_status::update_command_status(command, new_status).await?;
+    api::requests::update_command_status::update_command_status(
+        command,
+        new_status,
+        &ApiConfig::default(),
+    )
+    .await?;
 
     Ok(())
 }
@@ -116,53 +122,6 @@ fn handle_err(err: HandlerError) {
         }
         _ => {
             dbg!(&err);
-        }
-    }
-}
-
-pub mod executor {
-    use log::info;
-
-    use crate::models::db::commands::{Command, CommandNames};
-    use crate::models::HandlerError;
-
-    pub async fn handoff_command_to_executor(
-        command: &Command,
-    ) -> Result<Option<String>, HandlerError> {
-        info!("handing off command to executor: {:?}", &command);
-        match &command.name {
-            CommandNames::Test => {
-                // TODO @felipearce: add test command here
-                Ok(Some("test".to_string()))
-            }
-            CommandNames::ShellCmd => {
-                // execute args in the shell
-                let args = match command.args.as_ref() {
-                    Some(args) => args,
-                    None => {
-                        return Err(HandlerError::ParseError(
-                            "no args found for shell cmd".to_string(),
-                        ));
-                    }
-                };
-
-                let output_result = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(args)
-                    .output();
-
-                match output_result {
-                    Ok(output) => {
-                        let output_str = String::from_utf8(output.stdout).unwrap();
-                        Ok(Some(output_str))
-                    }
-                    Err(e) => Err(HandlerError::CmdError(e.to_string())),
-                }
-            }
-            _ => {
-                // TODO @felipearce: add more commands here
-                Ok(None)
-            }
         }
     }
 }

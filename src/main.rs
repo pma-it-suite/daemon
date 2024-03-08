@@ -1,3 +1,5 @@
+#![feature(async_closure)]
+
 use main_event_loop::run_main_event_loop;
 use models::HandlerError;
 use pre_event_loop::{get_device_id, get_user_id};
@@ -19,6 +21,10 @@ async fn main() -> Result<(), HandlerError> {
 }
 
 pub mod api;
+pub mod executor;
 pub mod localstore;
 pub mod main_event_loop;
 pub mod pre_event_loop;
+
+#[cfg(test)]
+pub mod test_commons;

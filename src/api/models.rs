@@ -7,6 +7,15 @@ pub mod update_command_status {
         pub command_id: Id,
         pub status: CommandStatus,
     }
+
+    impl UpdateCommandStatusRequest {
+        pub fn new(command_id: Id) -> Self {
+            Self {
+                command_id,
+                status: CommandStatus::default(),
+            }
+        }
+    }
 }
 
 pub mod fetch_commands {
@@ -16,6 +25,12 @@ pub mod fetch_commands {
     #[derive(Serialize, Deserialize, Debug)]
     pub struct FetchRecentCommandResponse {
         pub command: Command,
+    }
+
+    impl FetchRecentCommandResponse {
+        pub fn new(command: Command) -> Self {
+            FetchRecentCommandResponse { command }
+        }
     }
 }
 
@@ -30,8 +45,24 @@ pub mod register_device {
         pub user_id: Id,
     }
 
+    impl Default for RegisterDeviceRequest {
+        fn default() -> Self {
+            RegisterDeviceRequest {
+                device_name: "testdevicename".to_string(),
+                issuer_id: "testissuerid".to_string(),
+                user_id: "testuserid".to_string(),
+            }
+        }
+    }
+
     #[derive(Serialize, Deserialize, Debug)]
     pub struct RegisterDeviceResponse {
         pub device_id: Id,
+    }
+
+    impl RegisterDeviceResponse {
+        pub fn new(device_id: Id) -> Self {
+            RegisterDeviceResponse { device_id }
+        }
     }
 }
