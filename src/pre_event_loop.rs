@@ -54,3 +54,46 @@ pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
         .device_id,
     )
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        api::models::register_device::{RegisterDeviceRequest, RegisterDeviceResponse},
+        models::{db::common::Id, HandlerError},
+        test_commons::{
+            before_each, get_404_json_string, get_500_json_string, setup_server,
+            setup_server_with_default,
+        },
+    };
+
+    fn get_json_payload(device_id: Id) -> (RegisterDeviceResponse, String) {
+        let data = RegisterDeviceResponse::new(device_id);
+        let data_string = serde_json::to_string(&data).unwrap();
+
+        (data, data_string)
+    }
+
+    #[tokio::test]
+    async fn test_register_device() {
+        before_each();
+
+        let device_id = "testdeviceid".to_string();
+        let (data, json) = get_json_payload(device_id);
+        let mut server = setup_server_with_default();
+
+        let mock = server
+            .mock("POST", "/devices/register")
+            .with_status(200)
+            .with_body(json)
+            .create();
+
+        let input = RegisterDeviceRequest::default();
+        let result = super::register_device(&input.user_id).await;
+        dbg!(&result);
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response, data.device_id);
+        mock.assert();
+    }
+}
