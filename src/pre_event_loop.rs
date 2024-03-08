@@ -48,13 +48,9 @@ async fn register_device_inner(user_id: &Id, config: ApiConfig) -> Result<Id, Ha
     let device_name = get_device_name();
     info!("registering device with name: {}", device_name);
     Ok(
-        api::requests::register_device::register_device(
-            user_id,
-            device_name,
-            &config,
-        )
-        .await?
-        .device_id,
+        api::requests::register_device::register_device(user_id, device_name, &config)
+            .await?
+            .device_id,
     )
 }
 

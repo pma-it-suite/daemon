@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, sync::Mutex};
+use std::sync::Mutex;
 
 use crate::api::requests::ApiConfig;
 use lazy_static::lazy_static;
