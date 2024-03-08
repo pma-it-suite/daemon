@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use crate::api::requests::ApiConfig;
+use crate::{api::requests::ApiConfig, localstore::get_default_filepath};
 use lazy_static::lazy_static;
 use mockito;
 
@@ -20,6 +20,18 @@ fn once() {
 
 pub fn before_each() {
     once();
+}
+
+pub fn before_each_fs() {
+    once();
+    delete_file_if_exists();
+}
+
+fn delete_file_if_exists() {
+    let test_path = get_default_filepath();
+    if std::path::Path::new(&test_path).exists() {
+        std::fs::remove_file(&test_path).unwrap();
+    }
 }
 
 pub fn get_api_config_with_port(port: u16) -> ApiConfig {

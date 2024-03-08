@@ -9,7 +9,7 @@ use std::io::Write as _;
 use std::sync::Mutex;
 use tempdir::TempDir;
 
-fn get_default_filepath() -> String {
+pub fn get_default_filepath() -> String {
     if cfg!(test) {
         let filepath = "localstore.json".to_string();
         return TEMPDIR
@@ -41,7 +41,7 @@ fn get_tempdir() -> Option<TempDir> {
     None
 }
 
-fn get_handle() -> Result<jfs::Store, HandlerError> {
+pub fn get_handle() -> Result<jfs::Store, HandlerError> {
     let file_path = get_default_filepath();
     // if file doesnt exist make it
     if !std::path::Path::new(&file_path).exists() {
@@ -123,7 +123,7 @@ mod test {
 
     use crate::{
         localstore::{get_default_filepath, get_handle, get_user_id},
-        test_commons::before_each,
+        test_commons::before_each_fs,
     };
     use std::{collections::HashMap, io::Write as _, sync::Mutex};
 
@@ -140,13 +140,6 @@ mod test {
     fn does_file_contain(data: &str) -> bool {
         let file_data = get_file_data();
         file_data.contains(data)
-    }
-
-    fn delete_file_if_exists() {
-        let test_path = get_default_filepath();
-        if std::path::Path::new(&test_path).exists() {
-            std::fs::remove_file(&test_path).unwrap();
-        }
     }
 
     fn write_to_file(data: &str) {
@@ -179,8 +172,7 @@ mod test {
     #[test]
     fn test_get_handle_creates_file() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
         assert!(!does_default_file_exist());
 
         let result = super::get_handle();
@@ -192,8 +184,8 @@ mod test {
     #[test]
     fn test_db_init_happens_if_file_empty() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
+
         assert!(!does_default_file_exist());
 
         let result = super::get_handle();
@@ -207,11 +199,10 @@ mod test {
     #[test]
     fn test_db_init_does_not_happens_if_file_populated() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
+
         let test_id = "testid";
         let test_data = r#"{"user_id": ""#.to_owned() + test_id + r#""}"#;
-        dbg!(&test_data);
         write_to_file(&test_data);
 
         assert!(does_default_file_exist());
@@ -228,8 +219,7 @@ mod test {
     #[test]
     fn test_insert_works() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
 
         let data = get_test_data();
         assert!(!does_default_file_exist());
@@ -247,8 +237,7 @@ mod test {
     #[test]
     fn test_insert_replaces_existing_key() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
 
         let (test_key, test_val) = get_test_key_val();
         let second_test_val = "testval2";
@@ -269,8 +258,7 @@ mod test {
     #[test]
     fn test_query_works() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
 
         let data = get_test_data();
         assert!(!does_default_file_exist());
@@ -294,8 +282,7 @@ mod test {
     #[test]
     fn test_query_fails_when_missing_key() {
         let _tmp = LOCK.lock().unwrap();
-        before_each();
-        delete_file_if_exists();
+        before_each_fs();
 
         assert!(!does_default_file_exist());
 
