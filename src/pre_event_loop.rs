@@ -41,14 +41,17 @@ pub async fn get_device_id(user_id: &Id) -> Result<Id, HandlerError> {
 }
 
 pub async fn register_device(user_id: &Id) -> Result<Id, HandlerError> {
+    register_device_inner(user_id, ApiConfig::default()).await
+}
+
+async fn register_device_inner(user_id: &Id, config: ApiConfig) -> Result<Id, HandlerError> {
     let device_name = get_device_name();
     info!("registering device with name: {}", device_name);
-
     Ok(
         api::requests::register_device::register_device(
             user_id,
             device_name,
-            &ApiConfig::default(),
+            &config,
         )
         .await?
         .device_id,
@@ -60,7 +63,7 @@ mod test {
     use crate::{
         api::models::register_device::{RegisterDeviceRequest, RegisterDeviceResponse},
         models::db::common::Id,
-        test_commons::{before_each, setup_server_with_default},
+        test_commons::{before_each, setup_server},
     };
 
     fn get_json_payload(device_id: Id) -> (RegisterDeviceResponse, String) {
@@ -76,7 +79,7 @@ mod test {
 
         let device_id = "testdeviceid".to_string();
         let (data, json) = get_json_payload(device_id);
-        let mut server = setup_server_with_default();
+        let (mut server, config) = setup_server();
 
         let mock = server
             .mock("POST", "/devices/register")
@@ -85,7 +88,7 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id).await;
+        let result = super::register_device_inner(&input.user_id, config).await;
         dbg!(&result);
 
         assert!(result.is_ok());

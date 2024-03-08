@@ -38,7 +38,7 @@ impl ApiConfig {
 impl Default for ApiConfig {
     fn default() -> Self {
         ApiConfig {
-            host: "localhost".to_string(),
+            host: "http://127.0.0.1".to_string(),
             port: Some(5001),
         }
     }
