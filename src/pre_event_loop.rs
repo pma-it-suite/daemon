@@ -12,7 +12,7 @@ use crate::{
  * 2. test connection to server
  */
 pub fn get_device_name() -> String {
-    "testdevicefelipearce".to_string()
+    "teste2efelipe".to_string()
 }
 
 pub fn get_user_id() -> Result<Id, HandlerError> {
