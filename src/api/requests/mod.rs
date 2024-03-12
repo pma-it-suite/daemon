@@ -38,9 +38,10 @@ impl ApiConfig {
 impl Default for ApiConfig {
     fn default() -> Self {
         ApiConfig {
-            // host: "localhost".to_string(),
-            host: "http://52.234.223.69".to_string(),
+            host: "http://127.0.0.1".to_string(),
             port: Some(5001),
+            // host: "https://api.itx-app.com".to_string(),
+            // port: None,
         }
     }
 }
@@ -80,10 +81,7 @@ mod test {
         let config = ApiConfig::default();
 
         let path = "/testpath";
-        let result = config.with_path(path);
-
-        // let expected = "localhost:5001/testpath";
-        // assert_eq!(result, expected);
+        let _ = config.with_path(path);
     }
 }
 

@@ -8,13 +8,15 @@ use super::ApiConfig;
 
 pub async fn register_device(
     user_id: &Id,
+    user_secret: &str,
     device_name: String,
     config: &ApiConfig,
 ) -> ApiResult<RegisterDeviceResponse> {
     let request = RegisterDeviceRequest {
         user_id: user_id.clone(),
-        device_name,
         issuer_id: user_id.clone(),
+        device_name,
+        user_secret: user_secret.to_string(),
     };
 
     let url = config.with_path("/devices/register");
@@ -58,7 +60,7 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id, input.device_name, &config).await;
+        let result = super::register_device(&input.user_id,&input.user_secret, input.device_name, &config).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -79,7 +81,7 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id, input.device_name, &config).await;
+        let result = super::register_device(&input.user_id, &input.user_secret, input.device_name, &config).await;
 
         assert!(result.is_err());
         assert!(matches!(result.err().unwrap(), HandlerError::NotFound));
@@ -99,7 +101,7 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id, input.device_name, &config).await;
+        let result = super::register_device(&input.user_id, &input.user_secret, input.device_name, &config).await;
 
         assert!(result.is_err());
         assert!(matches!(result.err().unwrap(), HandlerError::ServerError));

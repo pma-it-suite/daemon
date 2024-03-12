@@ -41,6 +41,7 @@ pub mod register_device {
     #[derive(Serialize, Deserialize, Debug)]
     pub struct RegisterDeviceRequest {
         pub device_name: String,
+        pub user_secret: String,
         pub issuer_id: Id,
         pub user_id: Id,
     }
@@ -50,6 +51,7 @@ pub mod register_device {
             RegisterDeviceRequest {
                 device_name: "testdevicename".to_string(),
                 issuer_id: "testissuerid".to_string(),
+                user_secret: "testusersecret".to_string(),
                 user_id: "testuserid".to_string(),
             }
         }

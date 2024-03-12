@@ -12,7 +12,7 @@ use crate::{
  * 2. test connection to server
  */
 pub fn get_device_name() -> String {
-    "teste2efelipe".to_string()
+    "testnewdevicefelipe".to_string()
 }
 
 pub fn get_user_id() -> Result<Id, HandlerError> {
@@ -20,16 +20,23 @@ pub fn get_user_id() -> Result<Id, HandlerError> {
     let user_id_key = "user_id";
     let user_id = query_data(user_id_key)?.expect("user id to be set");
     info!("user_id retrieved from store is {}", &user_id);
-
     Ok(user_id)
 }
 
-async fn get_device_id_inner(user_id: &Id, config: ApiConfig) -> Result<Id, HandlerError> {
+pub fn get_user_secret() -> Result<String, HandlerError> {
+    // prelim check for data
+    let user_secret_key = "user_secret";
+    let user_secret = query_data(user_secret_key)?.expect("user secret to be set");
+    info!("user_secret retrieved from store is {}", &user_secret);
+    Ok(user_secret)
+}
+
+async fn get_device_id_inner(user_id: &Id, user_secret: &str, config: ApiConfig) -> Result<Id, HandlerError> {
     // get device id or register it if not set
     let device_id_key = "device_id";
     let device_id_resp = query_data(device_id_key);
     let device_id = if device_id_resp.is_err() {
-        let received_id = register_device_inner(user_id, config).await?;
+        let received_id = register_device_inner(user_id,user_secret, config).await?;
         info!("received device id from call and storing: {}", &received_id);
         write_single(&received_id, device_id_key)?;
         info!("stored device id: {}", &received_id);
@@ -42,15 +49,15 @@ async fn get_device_id_inner(user_id: &Id, config: ApiConfig) -> Result<Id, Hand
     Ok(device_id)
 }
 
-pub async fn get_device_id(user_id: &Id) -> Result<Id, HandlerError> {
-    get_device_id_inner(user_id, ApiConfig::default()).await
+pub async fn get_device_id(user_id: &Id, user_secret: &str) -> Result<Id, HandlerError> {
+    get_device_id_inner(user_id, user_secret, ApiConfig::default()).await
 }
 
-async fn register_device_inner(user_id: &Id, config: ApiConfig) -> Result<Id, HandlerError> {
+async fn register_device_inner(user_id: &Id, user_secret: &str, config: ApiConfig) -> Result<Id, HandlerError> {
     let device_name = get_device_name();
     info!("registering device with name: {}", device_name);
     Ok(
-        api::requests::register_device::register_device(user_id, device_name, &config)
+        api::requests::register_device::register_device(user_id, user_secret, device_name, &config)
             .await?
             .device_id,
     )
@@ -110,7 +117,7 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device_inner(&input.user_id, config).await;
+        let result = super::register_device_inner(&input.user_id, &input.user_secret , config).await;
         dbg!(&result);
 
         assert!(result.is_ok());
@@ -136,7 +143,8 @@ mod test {
             .create();
 
         let user_id = "testid".to_string();
-        let result = super::get_device_id_inner(&user_id, config).await;
+        let user_secret = "secret".to_string();
+        let result = super::get_device_id_inner(&user_id, &user_secret, config).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap() == data.device_id);
@@ -154,7 +162,8 @@ mod test {
         assert!(response.is_ok());
 
         let user_id = "testid".to_string();
-        let result = super::get_device_id(&user_id).await;
+        let user_secret = "testsecret".to_string();
+        let result = super::get_device_id(&user_id, &user_secret).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap() == device_id);

@@ -15,9 +15,9 @@ use crate::{
     },
 };
 
-const SLEEP_SHORT: u64 = 1;
-const SLEEP_MEDIUM: u64 = 5;
-const SLEEP_LONG: u64 = 10;
+pub const SLEEP_SHORT: u64 = 1;
+pub const SLEEP_MEDIUM: u64 = 5;
+pub const SLEEP_LONG: u64 = 10;
 
 /**
  * main (post-registered) run loop:
@@ -30,7 +30,7 @@ const SLEEP_LONG: u64 = 10;
  * 4. call server to send outgoing update commands status request if success or err. or blocking or etc.
  * 5. return data from command (if any)
  */
-pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> Result<(), HandlerError> {
+pub async fn run_main_event_loop(device_id: &Id, _user_id: &Id) -> ! {
     loop {
         // get most recent command
         let command_resp = fetch_command(device_id).await;
@@ -108,8 +108,9 @@ pub async fn execute_command(command: &Command) -> Result<Option<String>, Handle
     Ok(resp)
 }
 
-fn sleep_in_seconds(units: u64) {
+pub fn sleep_in_seconds(units: u64) {
     let sleep_in_ms = units * 1000;
+    info!("sleeping for {} seconds...", units);
     thread::sleep(Duration::from_millis(sleep_in_ms));
 }
 
