@@ -90,7 +90,7 @@ async fn handle_response<T>(
     on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, Result<T, HandlerError>>,
 ) -> Result<T, HandlerError> {
     let status = response.status();
-    if let StatusCode::OK | StatusCode::CREATED |  StatusCode::NO_CONTENT = status {
+    if let StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT = status {
         Ok(on_ok(response).await?)
     } else {
         let text = response.text().await?;

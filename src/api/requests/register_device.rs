@@ -60,7 +60,13 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id,&input.user_secret, input.device_name, &config).await;
+        let result = super::register_device(
+            &input.user_id,
+            &input.user_secret,
+            input.device_name,
+            &config,
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -81,7 +87,13 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id, &input.user_secret, input.device_name, &config).await;
+        let result = super::register_device(
+            &input.user_id,
+            &input.user_secret,
+            input.device_name,
+            &config,
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(result.err().unwrap(), HandlerError::NotFound));
@@ -101,7 +113,13 @@ mod test {
             .create();
 
         let input = RegisterDeviceRequest::default();
-        let result = super::register_device(&input.user_id, &input.user_secret, input.device_name, &config).await;
+        let result = super::register_device(
+            &input.user_id,
+            &input.user_secret,
+            input.device_name,
+            &config,
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(result.err().unwrap(), HandlerError::ServerError));
