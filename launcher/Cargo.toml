@@ -1,0 +1,28 @@
+[package]
+name = "launcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jfs = "0.9.0"
+lazy_static = "1.4.0"
+reqwest = { version = "0.11.20", features = ["json"] }
+serde = { version = "1.0.188", features = ["serde_derive"] }
+serde_json = "1.0.107"
+sys-info = "0.9.1"
+thiserror = "1.0.48"
+tokio = { version = "1.32.0", features = ["full"] }
+warp = "0.3.5"
+log = "0.4.8"
+simple_logger = "4.3.3"
+futures = "0.3.30"
+tempdir = "0.3.7"
+
+[dev-dependencies]
+mockito = "1.4.0"
+
+[package.metadata.scripts]
+fix = "cargo clippy --fix  --allow-dirty --broken-code && cargo fmt"
+cov = "cargo llvm-cov"
+covopen = "cargo llvm-cov --open"
+
