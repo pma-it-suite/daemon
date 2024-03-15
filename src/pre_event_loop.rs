@@ -40,15 +40,17 @@ async fn get_device_id_inner(
     // get device id or register it if not set
     let device_id_key = "device_id";
     let device_id_resp = query_data(device_id_key);
-    let device_id = if device_id_resp.is_err() {
-        let received_id = register_device_inner(user_id, user_secret, config).await?;
-        info!("received device id from call and storing: {}", &received_id);
-        write_single(&received_id, device_id_key)?;
-        info!("stored device id: {}", &received_id);
-        received_id
-    } else {
-        device_id_resp?.unwrap()
+    let device_id = match device_id_resp {
+        Ok(Some(id)) => id,
+        _ => {
+            let received_id = register_device_inner(user_id, user_secret, config).await?;
+            info!("received device id from call and storing: {}", &received_id);
+            write_single(&received_id, device_id_key)?;
+            info!("stored device id: {}", &received_id);
+            received_id
+        },
     };
+
     info!("device id retrieved from store is {}", device_id);
 
     Ok(device_id)
