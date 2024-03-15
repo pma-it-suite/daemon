@@ -9,12 +9,12 @@ use std::io::Write as _;
 
 use std::path::PathBuf;
 
-struct Localstore {
+pub struct LocalStore {
     db: jfs::Store,
     path: PathBuf,
 }
 
-impl Localstore {
+impl LocalStore {
     pub fn new(path: PathBuf) -> HandlerResult<Self> {
         Ok(Self {
             db: Self::get_handle(path.clone())?,
@@ -60,7 +60,7 @@ impl Localstore {
         Ok(())
     }
 
-    fn query_internal(&self, key: &str) -> HandlerResult<Option<String>> {
+    pub fn query(&self, key: &str) -> HandlerResult<Option<String>> {
         info!("querying data for key: {}", key);
         let data = self.db.get(key)?;
         Ok(data)

@@ -4,17 +4,51 @@
 
 use std::path::PathBuf;
 
+use localstore::LocalStore;
 use models::{AppConfig, HandlerResult, LauncherConfig, SemVer};
 use requests::{
     upstream_requests::{fetch_bin, fetch_version, BinData},
     ApiConfig,
 };
 
-pub fn main() {}
+pub fn main() {
+    /*
+     * 1. make sure launcher config is good on local
+     *      - NOTE: for now, hardcoded default. Eventually populate from initial distribution pkg
+     *
+     * 2. do health check on upstream until healthy
+     *      - if bad resp -> sleep long and loop
+     *
+     * 3. check if app has been installed in local machine
+     *
+     * 4. pull semver from upstream
+     *
+     * 5.a. if app NOT installed
+     *      - pull bin from upstream
+     *      - install bin on local
+     *      - setup first time configs for app
+     *      - update configs for launcher
+     *
+     * 5.b. if app IS installed
+     *      - check semver of app config
+     *      - if local semver < upstream semver
+     *          - pull bin from upstream
+     *          - nuke bin on local
+     *          - install bin on local
+     *          - update configs for app
+     *          - update configs for launcher
+     *      - else do nothing
+     *
+     * 6. run app with launcherd
+     * 7. monitor and set schedule to start from step (1) every N hours/minutes/days
+     */
+}
 
-pub fn get_current_app_version() -> String {
-    let _config = get_config_from_app_local();
-    unimplemented!()
+pub fn get_current_app_version(store: &LocalStore) -> HandlerResult<String> {
+    Ok(store
+        .query("version")
+        .unwrap()
+        .unwrap_or("0.0.0".to_string()))
 }
 
 pub async fn get_upstream_app_version() -> HandlerResult<SemVer> {
@@ -36,16 +70,23 @@ pub async fn install_binary_to_local(config: &LauncherConfig) -> HandlerResult<(
     Ok(())
 }
 
-pub fn get_config_from_launcher_local() -> Result<(), ()> {
-    unimplemented!()
+pub fn get_config_from_launcher_local(store: &LocalStore) -> HandlerResult<AppConfig> {
+    store.get_all_data()
 }
 
-pub fn get_config_from_app_local() -> HandlerResult<AppConfig> {
-    unimplemented!()
+pub fn get_config_from_app_local(store: &LocalStore) -> HandlerResult<AppConfig> {
+    store.get_all_data()
 }
 
-pub fn save_app_config_to_local() -> Result<(), ()> {
-    unimplemented!()
+pub fn save_app_config_to_local(store: &LocalStore, config: &AppConfig) -> HandlerResult<()> {
+    store.overwrite_current_data(config)
+}
+
+pub fn save_launcher_config_to_local(
+    store: &LocalStore,
+    config: &LauncherConfig,
+) -> HandlerResult<()> {
+    store.overwrite_current_data(config)
 }
 
 pub fn has_been_installed(config: &LauncherConfig) -> bool {
@@ -161,6 +202,7 @@ pub mod models {
         pub app_version: SemVer,
         pub launcher_version: SemVer,
         pub user_id: String,
+        pub has_app_been_installed: bool,
     }
 }
 
