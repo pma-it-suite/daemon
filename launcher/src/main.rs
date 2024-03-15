@@ -54,7 +54,17 @@ async fn main() -> ! {
 
     info!("Launcher starting...");
 
-    let init_config = LauncherConfig {
+    let launcher_store = match does_local_launcher_config_exist() {
+        true => {
+            info!("Launcher configuration found.");
+
+            LocalStore::new(PathBuf::from(get_launcher_store_file_name()))
+                .expect("Failed to create LocalStore.")
+        }
+        false => {
+            info!("No launcher configuration found, creating...");
+
+            let init_config = LauncherConfig {
         app_path: get_path(),
         // Additional logging for configuration load
         bin_name: "itx".to_string(),
@@ -65,27 +75,25 @@ async fn main() -> ! {
         has_app_been_installed: false,
     };
 
-    debug!("Launcher initial configuration loaded.");
+            debug!("Launcher initial configuration loaded.");
 
-    let launcher_store = match LocalStore::from(PathBuf::from("launcherdata.json"), &init_config) {
-        Ok(store) => store,
-        Err(e) => {
-            error!("Failed to create LocalStore from launcherdata.json: {}", e);
-            panic!("Launcher initialization failure.");
+            match LocalStore::from(PathBuf::from(get_launcher_store_file_name()), &init_config) {
+                Ok(store) => store,
+                Err(e) => {
+                    error!("Failed to create LocalStore from launcherdata.json: {}", e);
+                    panic!("Launcher initialization failure.");
+                }
+            }
         }
     };
 
-    info!("Checking launcher configuration...");
-    let mut config = match launcher_store.get_all_data() {
+    let mut config: LauncherConfig = match launcher_store.get_all_data() {
         Ok(cfg) => cfg,
         Err(e) => {
             error!("Failed to get launcher configuration: {}", e);
             panic!("Launcher configuration retrieval failure.");
         }
     };
-
-    debug!("Configuration assert check...");
-    assert_eq!(init_config, config);
 
     info!("Pinging upstream server...");
     assert!(requests::upstream_requests::ping(&ApiConfig::default())
@@ -143,6 +151,8 @@ async fn main() -> ! {
                 config.app_version = upstream_version;
                 save_launcher_config_to_local(&launcher_store, &config)
                     .expect("Failed to save updated launcher configuration.");
+            } else {
+                info!("App is up to date, continuing to launch...");
             }
         }
     }
@@ -153,6 +163,15 @@ async fn main() -> ! {
     launch_app_with_launcherd(&app_config).expect("Failed to launch app.");
 
     panic!();
+}
+
+fn get_launcher_store_file_name() -> String {
+    "launcherdata.json".to_string()
+}
+
+fn does_local_launcher_config_exist() -> bool {
+    let path = PathBuf::from(get_launcher_store_file_name());
+    path.exists()
 }
 
 pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
@@ -177,17 +196,39 @@ pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
 }
 
 fn set_execute_permission(file_path: &Path) -> std::io::Result<()> {
-    let metadata = fs::metadata(file_path)?;
-    let mut permissions = metadata.permissions();
+    let parent = file_path.parent().unwrap();
+    let children = parent.read_dir()?;
 
-    // This adds execute permissions for the owner, group, and others
-    permissions.set_mode(0o755); // Read & execute for everyone, write for owner
+    for child in children {
+        let child = child?;
+        let metadata = fs::metadata(child.path())?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(child.path(), permissions)?;
 
-    fs::set_permissions(file_path, permissions)?;
+        info!(
+            "Set execute permissions for file: {}",
+            child.path().to_str().unwrap()
+        );
+    }
     Ok(())
 }
 
 pub fn delete_bin_from_local(config: &LauncherConfig) -> HandlerResult<()> {
+    let file_name = config.get_bin_path();
+    match set_execute_permission(&file_name) {
+        Ok(_) => {
+            info!(
+                "Execute permissions set for files in dir: {}",
+                &file_name.parent().unwrap().display()
+            );
+        }
+        Err(e) => {
+            error!("Failed to set execute permissions: {}", e);
+            return Err(HandlerError::from(e));
+        }
+    };
+
     let base_path = config.app_path.parent().unwrap();
     std::fs::remove_dir_all(base_path)?;
     Ok(())
@@ -442,7 +483,7 @@ pub mod requests {
         }
 
         pub async fn fetch_version(config: &ApiConfig) -> HandlerResult<SemVer> {
-            let url = config.with_path("/semverTest.json");
+            let url = config.with_path("/semver.json");
             let response = get_client().get(url).send().await?;
 
             let status = response.status();
