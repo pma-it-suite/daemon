@@ -5,9 +5,7 @@
 use models::HandlerResult;
 use serde::{Deserialize, Serialize};
 
-
-pub fn main() {
-}
+pub fn main() {}
 
 #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
 pub struct SemVer {
@@ -46,7 +44,7 @@ pub struct LauncherConfig {
 }
 
 pub fn get_current_app_version() -> String {
-    let config = get_config_from_app_local();
+    let _config = get_config_from_app_local();
     unimplemented!()
 }
 
@@ -93,7 +91,6 @@ fn get_path() -> String {
 fn get_default_path() -> String {
     unimplemented!()
 }
-
 
 pub mod models {
     use thiserror::Error;
@@ -438,7 +435,7 @@ pub mod localstore {
 pub mod test_commons {
     use std::sync::Mutex;
 
-    use crate::{requests::ApiConfig, localstore::get_default_filepath};
+    use crate::{localstore::get_default_filepath, requests::ApiConfig};
     use lazy_static::lazy_static;
     use mockito;
 
