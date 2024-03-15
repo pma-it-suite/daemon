@@ -2,10 +2,14 @@
 #![feature(never_type)]
 #![feature(build_hasher_simple_hash_one)]
 
+use service_manager::*;
+
 use std::fs::{self};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use localstore::LocalStore;
 use log::{debug, error, info};
@@ -63,17 +67,18 @@ async fn main() -> ! {
         }
         false => {
             info!("No launcher configuration found, creating...");
+            let (user_id, user_secret) = get_secrets_from_env();
 
             let init_config = LauncherConfig {
-        app_path: get_path(),
-        // Additional logging for configuration load
-        bin_name: "itx".to_string(),
-        app_version: SemVer::new(0, 0, 0),
-        launcher_version: SemVer::new(0, 0, 1),
-        user_id: "9c66d842-cab9-4bff-93be-b05388f652e7".to_string(),
-        user_secret: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJmZDI5MTRlYy0wMTBhLTRkNDYtYjk1YS01MzdhMzRmYWQ3MjIiLCJ1c2VyX2lkIjoiOWM2NmQ4NDItY2FiOS00YmZmLTkzYmUtYjA1Mzg4ZjY1MmU3IiwiZXhwIjoxNzEwNDU1OTg2fQ.II_lTbMcMp4-dywN4QAorqdJBZobM8cyC-KTgp96GeY".to_string(),
-        has_app_been_installed: false,
-    };
+                app_path: get_path(),
+                // Additional logging for configuration load
+                bin_name: "itx".to_string(),
+                app_version: SemVer::new(0, 0, 0),
+                launcher_version: SemVer::new(0, 0, 1),
+                user_id,
+                user_secret,
+                has_app_been_installed: false,
+            };
 
             debug!("Launcher initial configuration loaded.");
 
@@ -167,9 +172,94 @@ async fn main() -> ! {
     info!("Launching app...");
     let app_config =
         get_config_from_app_local(&app_store).expect("Failed to get app configuration for launch.");
-    launch_app_with_launcherd(&app_config).expect("Failed to launch app.");
+
+    // launch_app_with_launcherd(&app_config).expect("Failed to launch app.");
+    launch(&app_config).expect("Failed to launch app.");
 
     panic!();
+}
+
+fn get_service_name() -> String {
+    "com.itx.app".to_string()
+}
+
+fn launch(config: &AppConfig) -> HandlerResult<()> {
+    set_execute_permission(&config.get_bin_path())?;
+    // Create a label for our service
+    let label: ServiceLabel = get_service_name().parse().unwrap();
+    info!("Preparing to launch service with label: {}", label);
+
+    // Get generic service by detecting what is available on the platform
+    let mut manager = match <dyn ServiceManager>::native() {
+        Ok(manager) => manager,
+        Err(e) => {
+            error!("Failed to detect management platform: {}", e);
+            return Err(HandlerError::from(e));
+        }
+    };
+    info!("Detected service management platform.");
+
+    match manager.set_level(ServiceLevel::User) {
+        Ok(_) => info!("Service level set to user."),
+        Err(e) => {
+            error!("Failed to set service level: {}", e);
+            return Err(HandlerError::from(e));
+        }
+    }
+
+    // Install our service using the underlying service management platform
+    info!("Installing service...");
+    if let Err(e) = manager.install(ServiceInstallCtx {
+        label: label.clone(),
+        program: config.get_bin_path(),
+        args: vec![],
+        contents: None,
+        username: None,
+        working_directory: Some(config.app_path.clone()),
+        environment: None,
+    }) {
+        error!("Failed to install service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    // Start our service using the underlying service management platform
+    info!("Starting service...");
+    if let Err(e) = manager.start(ServiceStartCtx {
+        label: label.clone(),
+    }) {
+        error!("Failed to start service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    sleep_in_seconds(1);
+
+    // Stop our service using the underlying service management platform
+    info!("Stopping service...");
+    if let Err(e) = manager.stop(ServiceStopCtx {
+        label: label.clone(),
+    }) {
+        error!("Failed to stop service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    sleep_in_seconds(1);
+
+    // Uninstall our service using the underlying service management platform
+    info!("Uninstalling service...");
+    if let Err(e) = manager.uninstall(ServiceUninstallCtx { label }) {
+        error!("Failed to uninstall service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    info!("Service lifecycle operations completed successfully.");
+
+    Ok(())
+}
+
+fn get_secrets_from_env() -> (String, String) {
+    let user_id = std::env::var("ITX_USER_ID").expect("ITX_USER_ID not set");
+    let user_secret = std::env::var("ITX_USER_SECRET").expect("ITX_USER_SECRET not set");
+    (user_id, user_secret)
 }
 
 fn get_launcher_store_file_name() -> String {
@@ -286,6 +376,12 @@ fn get_path() -> PathBuf {
 
 fn get_default_path() -> PathBuf {
     PathBuf::from(shellexpand::tilde("~/.itx").into_owned())
+}
+
+fn sleep_in_seconds(units: u64) {
+    let sleep_in_ms = units * 1000;
+    info!("sleeping for {} seconds...", units);
+    thread::sleep(Duration::from_millis(sleep_in_ms));
 }
 
 pub mod models {
