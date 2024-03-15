@@ -5,7 +5,8 @@
 use std::path::PathBuf;
 
 use localstore::LocalStore;
-use models::{AppConfig, HandlerResult, LauncherConfig, SemVer};
+use log::info;
+use models::{AppConfig, GetBinPath, HandlerResult, LauncherConfig, SemVer};
 use requests::{
     upstream_requests::{fetch_bin, fetch_version, BinData},
     ApiConfig,
@@ -43,8 +44,12 @@ async fn main() -> ! {
      * 6. run app with launcherd
      * 7. monitor and set schedule to start from step (1) every N hours/minutes/days
      */
+    std::env::set_var("RUST_LOG", "info");
+    simple_logger::SimpleLogger::new().env().init().unwrap();
+
     let init_config = LauncherConfig {
         app_path: get_path(),
+        bin_name: "itx".to_string(),
         app_version: SemVer::new(0, 0, 0),
         launcher_version: SemVer::new(0, 0, 1),
         user_id: "9c66d842-cab9-4bff-93be-b05388f652e7".to_string(),
@@ -71,6 +76,7 @@ async fn main() -> ! {
                 .await
                 .unwrap(); // TODO: handle error
             let app_config = AppConfig {
+                bin_name: config.bin_name.clone(),
                 app_path: config.app_path.clone(),
                 version: upstream_version,
                 user_id: config.user_id.clone(),
@@ -108,7 +114,9 @@ async fn main() -> ! {
 }
 
 pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
-    let mut cmd = std::process::Command::new(&config.app_path);
+    let file_name = &config.get_bin_path();
+    info!("launching app with file: {}", file_name.to_str().unwrap());
+    let mut cmd = std::process::Command::new(file_name);
     cmd.spawn()?;
     Ok(())
 }
@@ -133,7 +141,7 @@ pub async fn pull_from_upstream_and_install_binary_to_local(
     config: &LauncherConfig,
 ) -> HandlerResult<()> {
     create_app_dir_if_none_exists(config)?;
-    let file_name = &config.app_path;
+    let file_name = &config.get_bin_path();
     let mut file = std::fs::File::create(file_name)?;
     let mut content = get_binary_from_upstream().await?;
     std::io::copy(&mut content, &mut file)?;
@@ -265,6 +273,7 @@ pub mod models {
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
     pub struct AppConfig {
         pub app_path: PathBuf,
+        pub bin_name: String,
         pub version: SemVer,
         pub user_id: String,
         pub user_secret: String,
@@ -272,12 +281,29 @@ pub mod models {
 
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
     pub struct LauncherConfig {
+        pub bin_name: String,
         pub app_path: PathBuf,
         pub app_version: SemVer,
         pub launcher_version: SemVer,
         pub user_id: String,
         pub user_secret: String,
         pub has_app_been_installed: bool,
+    }
+
+    pub trait GetBinPath {
+        fn get_bin_path(&self) -> PathBuf;
+    }
+
+    impl GetBinPath for AppConfig {
+        fn get_bin_path(&self) -> PathBuf {
+            self.app_path.join(&self.bin_name)
+        }
+    }
+
+    impl GetBinPath for LauncherConfig {
+        fn get_bin_path(&self) -> PathBuf {
+            self.app_path.join(&self.bin_name)
+        }
     }
 }
 
@@ -380,7 +406,7 @@ pub mod requests {
             let response = get_client().get(url).send().await?;
 
             let status = response.status();
-            info!("Response status for fetch version: {}", status);
+            info!("Response status for health check: {}", status);
 
             let bind = |response: reqwest::Response| -> BoxFuture<'static, ApiResult<Ping>> {
                 Box::pin(async move { Ok(response.json().await?) })
