@@ -110,7 +110,7 @@ async fn main() -> ! {
             config.has_app_been_installed = false;
         }
 
-        let mut needs_start = false;
+        let needs_start;
 
         let binded_manager = match get_manager() {
             Ok(manager) => manager,
