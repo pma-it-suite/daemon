@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 0. use cargo bump to bump patch version
+cargo bump patch
+
 # 1. get the SEMVER from the Cargo.toml
 SEMVER=$(sed -n 's/version = "\(.*\)"/\1/p' Cargo.toml)
 
@@ -24,8 +27,12 @@ cargo build --release
 # This often matches your Cargo project name unless specified otherwise
 BINARY_NAME=$(basename $(pwd)) # This assumes the binary name matches the folder name
 
-cp target/release/$BINARY_NAME ~/Downloads/itxtest
-cp semver.json ~/Downloads/itxtest
+# cp target/release/$BINARY_NAME ~/Downloads/itxtest
+# cp semver.json ~/Downloads/itxtest
 
 # 5. Open the folder in Finder
-open ~/Downloads/itxtest
+# open ~/Downloads/itxtest
+
+# 6. upload to az blob storage
+az storage blob upload --account-name blobperma --container-name blob-bin --name $BINARY_NAME --file target/release/$BINARY_NAME --overwrite --auth-mode login &
+az storage blob upload --account-name blobperma --container-name blob-bin --name semver.json --file semver.json --overwrite --auth-mode login 

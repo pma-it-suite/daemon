@@ -111,6 +111,13 @@ async fn main() -> ! {
     info!("Checking app configuration...");
     let app_config_result = get_config_from_app_local(&app_store);
 
+    if app_config_result.is_ok() {
+        info!("App configuration found.");
+    } else {
+        info!("No app configuration found, setting launcher config to not installed...");
+        config.has_app_been_installed = false;
+    }
+
     debug!("Processing based on app installation status...");
     match config.has_app_been_installed {
         false => {
@@ -121,6 +128,7 @@ async fn main() -> ! {
 
             debug!("Saving app configuration...");
             let app_config = AppConfig {
+                device_id: "".to_string(),
                 bin_name: config.bin_name.clone(),
                 app_path: config.app_path.clone(),
                 version: upstream_version,
@@ -140,7 +148,6 @@ async fn main() -> ! {
 
             if app_config.version < upstream_version {
                 info!("New version available, updating app...");
-                delete_bin_from_local(&config).expect("Failed to delete local binary.");
                 pull_from_upstream_and_install_binary_to_local(&config)
                     .await
                     .expect("Failed to install binary from upstream.");
@@ -196,41 +203,16 @@ pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
 }
 
 fn set_execute_permission(file_path: &Path) -> std::io::Result<()> {
-    let parent = file_path.parent().unwrap();
-    let children = parent.read_dir()?;
+    // let parent = file_path.parent().unwrap();
+    let parent = file_path;
+    let metadata = fs::metadata(parent)?;
+    let mut permissions = metadata.permissions();
 
-    for child in children {
-        let child = child?;
-        let metadata = fs::metadata(child.path())?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(child.path(), permissions)?;
+    // This adds execute permissions for the owner, group, and others
+    permissions.set_mode(0o755); // Read & execute for everyone, write for owner
 
-        info!(
-            "Set execute permissions for file: {}",
-            child.path().to_str().unwrap()
-        );
-    }
-    Ok(())
-}
+    fs::set_permissions(parent, permissions)?;
 
-pub fn delete_bin_from_local(config: &LauncherConfig) -> HandlerResult<()> {
-    let file_name = config.get_bin_path();
-    match set_execute_permission(&file_name) {
-        Ok(_) => {
-            info!(
-                "Execute permissions set for files in dir: {}",
-                &file_name.parent().unwrap().display()
-            );
-        }
-        Err(e) => {
-            error!("Failed to set execute permissions: {}", e);
-            return Err(HandlerError::from(e));
-        }
-    };
-
-    let base_path = config.app_path.parent().unwrap();
-    std::fs::remove_dir_all(base_path)?;
     Ok(())
 }
 
@@ -249,7 +231,10 @@ pub async fn pull_from_upstream_and_install_binary_to_local(
 ) -> HandlerResult<()> {
     create_app_dir_if_none_exists(config)?;
     let file_name = &config.get_bin_path();
-    let mut file = std::fs::File::create(file_name)?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(file_name)?;
     let mut content = get_binary_from_upstream().await?;
     std::io::copy(&mut content, &mut file)?;
     Ok(())
@@ -283,6 +268,10 @@ pub fn create_app_dir_if_none_exists(config: &LauncherConfig) -> HandlerResult<(
     let base_path = config.app_path.parent().unwrap();
     if !base_path.exists() {
         std::fs::create_dir_all(base_path)?;
+    }
+    // also create file if none
+    if !config.get_bin_path().exists() {
+        std::fs::File::create(config.get_bin_path())?;
     }
     Ok(())
 }
@@ -384,6 +373,7 @@ pub mod models {
         pub version: SemVer,
         pub user_id: String,
         pub user_secret: String,
+        pub device_id: String,
     }
 
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
