@@ -12,7 +12,7 @@ pub async fn handoff_command_to_executor(
             // TODO @felipearce: add test command here
             let _ = std::process::Command::new("sh")
                 .arg("-c")
-                .arg("say 'this is a new new new test'")
+                .arg("say 'this is a no new no new new new test'")
                 .output();
             Ok(Some("test".to_string()))
         }

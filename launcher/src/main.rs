@@ -263,7 +263,7 @@ pub fn get_launcher_config_and_store() -> HandlerResult<(LocalStore, LauncherCon
         }
         false => {
             info!("No launcher configuration found, creating...");
-            let (user_id, user_secret, device_id) = get_secrets_from_env();
+            let (user_id, user_secret, device_id, api_host) = get_secrets_from_env();
 
             let init_config = LauncherConfig {
                 app_path: get_path(),
@@ -274,6 +274,7 @@ pub fn get_launcher_config_and_store() -> HandlerResult<(LocalStore, LauncherCon
                 user_id,
                 user_secret,
                 device_id,
+                api_host,
                 has_app_been_installed: false,
             };
 
@@ -292,10 +293,11 @@ pub fn get_launcher_config_and_store() -> HandlerResult<(LocalStore, LauncherCon
     let config: LauncherConfig = match launcher_store.get_all_data::<LauncherConfig>() {
         Ok(mut cfg) => {
             // always reassign the secrets to env
-            let (user_id, user_secret, device_id) = get_secrets_from_env();
+            let (user_id, user_secret, device_id, api_host) = get_secrets_from_env();
             cfg.user_id = user_id;
             cfg.user_secret = user_secret;
             cfg.device_id = device_id;
+            cfg.api_host = api_host;
             cfg
         }
         Err(e) => {
@@ -362,6 +364,7 @@ pub async fn install_app_fresh(
         user_id: config.user_id.clone(),
         user_secret: config.user_secret.clone(),
         device_id: config.device_id.clone().unwrap_or("".to_string()),
+        api_host: config.api_host.clone(),
     };
     save_app_config_to_local(app_store, &app_config)?;
 
@@ -482,15 +485,17 @@ fn uninstall_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
     Ok(())
 }
 
-fn get_secrets_from_env() -> (String, String, Option<String>) {
+fn get_secrets_from_env() -> (String, String, Option<String>, String) {
     let _user_id = std::env::var("ITX_USER_ID").unwrap_or("".to_string());
     let _user_secret = std::env::var("ITX_USER_SECRET").unwrap_or("".to_string());
-    let _device_id = std::env::var("ITX_USER_SECRET").unwrap_or("".to_string());
+    let _device_id = std::env::var("ITX_DEVICE_ID").unwrap_or("".to_string());
+    let _api_host = std::env::var("ITX_API_HOST").unwrap_or("".to_string());
     let user_id = "ef037a4c-97ca-4571-ab5d-1d36505889c4".to_string();
     let user_secret ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJOb25lIiwidXNlcl9pZCI6ImVmMDM3YTRjLTk3Y2EtNDU3MS1hYjVkLTFkMzY1MDU4ODljNCIsImV4cCI6MTcxMDcyMDcxMn0.91RmQlV9RCF3UJlzx6SOb-dx_-W7Fev5KcNZ_bZO5RA".to_string();
-    let device_id = "testnewdevicefelipe".to_string();
+    let device_id = "fb7a2887-f43a-4a91-9761-67ee79bfec47".to_string();
+    let api_host = "".to_string();
 
-    (user_id, user_secret, Some(device_id))
+    (user_id, user_secret, Some(device_id), api_host)
 }
 
 fn get_launcher_store_file_name() -> String {
@@ -701,6 +706,7 @@ pub mod models {
         pub user_id: String,
         pub user_secret: String,
         pub device_id: String,
+        pub api_host: String,
     }
 
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
@@ -713,6 +719,7 @@ pub mod models {
         pub user_secret: String,
         pub device_id: Option<String>,
         pub has_app_been_installed: bool,
+        pub api_host: String,
     }
 
     pub trait GetBinPath {
