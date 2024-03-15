@@ -538,10 +538,9 @@ pub mod requests {
     impl Default for ApiConfig {
         fn default() -> Self {
             ApiConfig {
-                host: "http://127.0.0.1".to_string(),
-                port: Some(5001),
-                // host: "https://api.itx-app.com".to_string(),
-                // port: None,
+                host: "https://blobperma.blob.core.windows.net/blob-bin".to_string(),
+                port: None, // host: "https://api.itx-app.com".to_string(),
+                            // port: None,
             }
         }
     }
@@ -563,7 +562,7 @@ pub mod requests {
         use super::ApiConfig;
 
         pub async fn fetch_version(config: &ApiConfig) -> HandlerResult<SemVer> {
-            let url = config.with_path("/upstream/version");
+            let url = config.with_path("/semverTest.json");
             let response = get_client().get(url).send().await?;
 
             let status = response.status();
@@ -576,7 +575,7 @@ pub mod requests {
         }
 
         pub async fn fetch_bin(config: &ApiConfig) -> HandlerResult<BinData> {
-            let url = config.with_path("/upstream/bin");
+            let url = config.with_path("/bintest");
             let response = get_client().get(url).send().await?;
 
             let status = response.status();
