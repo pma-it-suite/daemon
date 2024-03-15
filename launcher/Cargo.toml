@@ -1,14 +1,7 @@
 [package]
-name = "refactor"
-version = "0.1.9"
+name = "launcher"
+version = "0.1.0"
 edition = "2021"
-
-[package.metadata.scripts]
-fix = "cargo clippy --fix  --allow-dirty --allow-staged --broken-code && cargo fmt"
-cov = "cargo llvm-cov"
-covopen = "cargo llvm-cov --open"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 jfs = "0.9.0"
@@ -24,9 +17,16 @@ log = "0.4.8"
 simple_logger = "4.3.3"
 futures = "0.3.30"
 tempdir = "0.3.7"
+bytes = "1.5.0"
+shellexpand = "3.1.0"
+service-manager = "0.6.0"
 log4rs = "1.3.0"
-anyhow = "1.0.81"
-cargo-version-util = "=1.1.0"
 
 [dev-dependencies]
 mockito = "1.4.0"
+
+[package.metadata.scripts]
+fix = "cargo clippy --fix  --allow-dirty --allow-staged --broken-code && cargo fmt"
+cov = "cargo llvm-cov"
+covopen = "cargo llvm-cov --open"
+

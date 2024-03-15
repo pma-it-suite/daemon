@@ -37,11 +37,37 @@ impl ApiConfig {
 
 impl Default for ApiConfig {
     fn default() -> Self {
-        ApiConfig {
-            host: "http://127.0.0.1".to_string(),
-            port: Some(5001),
-            // host: "https://api.itx-app.com".to_string(),
-            // port: None,
+        let (host, port) = match get_host_string_from_localstore_or_env() {
+            Ok(val) => {
+                if val.is_empty() {
+                    ("http://127.0.0.1".to_string(), Some(5001))
+                } else {
+                    (val, None)
+                }
+            }
+            Err(e) => {
+                error!("error getting host string: {}", e);
+                ("http://127.0.0.1".to_string(), Some(5001))
+            }
+        };
+
+        ApiConfig { host, port }
+    }
+}
+
+fn get_host_string_from_localstore_or_env() -> Result<String, HandlerError> {
+    let env_string = match std::env::var("ITX_API_HOST") {
+        Ok(val) => Ok(val),
+        Err(_) => Err(HandlerError::ApiError),
+    };
+
+    if env_string.is_ok() {
+        env_string
+    } else {
+        let key = "api_host";
+        match crate::localstore::query_data(key) {
+            Ok(Some(val)) => Ok(val),
+            _ => Err(HandlerError::ApiError),
         }
     }
 }

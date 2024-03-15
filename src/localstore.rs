@@ -11,7 +11,7 @@ use tempdir::TempDir;
 
 pub fn get_default_filepath() -> String {
     if cfg!(test) {
-        let filepath = "localstore.json".to_string();
+        let filepath = "appdata.json".to_string();
         return TEMPDIR
             .lock()
             .as_ref()
@@ -23,7 +23,7 @@ pub fn get_default_filepath() -> String {
             .display()
             .to_string();
     }
-    "localstore.json".to_string()
+    "appdata.json".to_string()
 }
 
 lazy_static! {

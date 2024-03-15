@@ -1,8 +1,22 @@
 #![feature(async_closure)]
 #![feature(never_type)]
 
-use log::error;
+use log::{error, LevelFilter};
+use log4rs::{
+    self,
+    append::rolling_file::{
+        policy::compound::{
+            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
+        },
+        RollingFileAppender,
+    },
+    config::{Appender, Root},
+    encode::pattern::PatternEncoder,
+    filter::threshold::ThresholdFilter,
+    Config,
+};
 use main_event_loop::run_main_event_loop;
+use models::HandlerError;
 use pre_event_loop::{get_device_id, get_user_id, get_user_secret};
 
 use crate::main_event_loop::{sleep_in_seconds, SLEEP_LONG};
@@ -11,7 +25,16 @@ mod models;
 #[tokio::main]
 async fn main() -> ! {
     std::env::set_var("RUST_LOG", "info");
-    simple_logger::SimpleLogger::new().env().init().unwrap();
+
+    let log_result = setup_logger();
+
+    if log_result.is_err() {
+        simple_logger::SimpleLogger::new()
+            .env()
+            .with_utc_timestamps()
+            .init()
+            .unwrap();
+    }
 
     // pre event loop
     let user_id;
@@ -71,3 +94,34 @@ pub mod pre_event_loop;
 
 #[cfg(test)]
 pub mod test_commons;
+
+fn setup_logger() -> Result<(), HandlerError> {
+    let window_size = 3; // log0, log1, log2
+    let fixed_window_roller = FixedWindowRoller::builder().build("log{}", window_size)?;
+
+    let size_limit = 5 * 1024; // 5KB as max log file size to roll
+    let size_trigger = SizeTrigger::new(size_limit);
+    let compound_policy =
+        CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
+    let config = Config::builder()
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(LevelFilter::Debug)))
+                .build(
+                    "logfile",
+                    Box::new(
+                        RollingFileAppender::builder()
+                            .encoder(Box::new(PatternEncoder::new("{d} {l}::{m}{n}")))
+                            .build("logfile", Box::new(compound_policy))?,
+                    ),
+                ),
+        )
+        .build(
+            Root::builder()
+                .appender("logfile")
+                .build(LevelFilter::Debug),
+        )?;
+    log4rs::init_config(config)?;
+
+    Ok(())
+}
