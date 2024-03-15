@@ -30,7 +30,6 @@ pub fn before_each_fs() {
 fn delete_file_if_exists() {
     let test_path = get_default_filepath();
     if std::path::Path::new(&test_path).exists() {
-
         std::fs::remove_file(&test_path).unwrap();
     }
 }
