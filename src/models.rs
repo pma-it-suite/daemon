@@ -1,3 +1,4 @@
+use log4rs::config::runtime::ConfigErrors;
 use thiserror::Error;
 
 use self::db::common::Id;
@@ -28,6 +29,12 @@ pub enum HandlerError {
     ServerError,
     #[error("input error 4XX")]
     InputError,
+    #[error("anyhow error")]
+    AnyhowError(#[from] anyhow::Error),
+    #[error("set logger error")]
+    LoggerError(#[from] log::SetLoggerError),
+    #[error("set config error")]
+    ConfigLoggerError(#[from] ConfigErrors),
 }
 
 pub mod db {

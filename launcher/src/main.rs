@@ -123,9 +123,18 @@ async fn main() -> ! {
         config.has_app_been_installed = false;
     }
 
+    let mut needs_start = false;
+
+    let binded_manager = get_manager().expect("Failed to get service manager.");
+    let manager  = binded_manager.as_ref();
+
     debug!("Processing based on app installation status...");
-    match config.has_app_been_installed {
+    let needs_install = match config.has_app_been_installed {
         false => {
+            info!("Attempting to stop and uninstall service as failsafe (ignoring failures)...");
+            let _ = stop_service(manager);
+            let _ = uninstall_service(manager);
+
             info!("App not installed, pulling from upstream...");
             pull_from_upstream_and_install_binary_to_local(&config)
                 .await
@@ -147,11 +156,18 @@ async fn main() -> ! {
             config.app_version = upstream_version;
             save_launcher_config_to_local(&launcher_store, &config)
                 .expect("Failed to save launcher configuration.");
+
+            needs_start = true;
+            true
         }
         true => {
             let mut app_config = app_config_result.expect("Failed to get app configuration.");
 
             if app_config.version < upstream_version {
+                info!("Attempting to just stop service for update (ignoring failures)...");
+                let _ = stop_service(manager);
+                // let _ = uninstall_service();
+
                 info!("New version available, updating app...");
                 pull_from_upstream_and_install_binary_to_local(&config)
                     .await
@@ -163,32 +179,39 @@ async fn main() -> ! {
                 config.app_version = upstream_version;
                 save_launcher_config_to_local(&launcher_store, &config)
                     .expect("Failed to save updated launcher configuration.");
+                needs_start = true;
             } else {
-                info!("App is up to date, continuing to launch...");
+                info!("App is up to date. No launch required");
+                needs_start = false;
             }
+
+            false
         }
-    }
+    };
 
     info!("Launching app...");
     let app_config =
         get_config_from_app_local(&app_store).expect("Failed to get app configuration for launch.");
 
-    // launch_app_with_launcherd(&app_config).expect("Failed to launch app.");
-    launch(&app_config).expect("Failed to launch app.");
+    if needs_install {
+        install_service(manager, &app_config).unwrap();
+    }
+
+    if needs_start {
+        info!("Start requested, starting service...");
+        start_service(manager).expect("Failed to start service.");
+    } else {
+        info!("No start requested, skipping service start.");
+    }
 
     panic!();
 }
 
-fn get_service_name() -> String {
-    "com.itx.app".to_string()
+fn get_service_label() -> ServiceLabel {
+    "com.itx.app".parse().unwrap()
 }
 
-fn launch(config: &AppConfig) -> HandlerResult<()> {
-    set_execute_permission(&config.get_bin_path())?;
-    // Create a label for our service
-    let label: ServiceLabel = get_service_name().parse().unwrap();
-    info!("Preparing to launch service with label: {}", label);
-
+fn get_manager() -> HandlerResult<Box<dyn ServiceManager>> {
     // Get generic service by detecting what is available on the platform
     let mut manager = match <dyn ServiceManager>::native() {
         Ok(manager) => manager,
@@ -207,6 +230,45 @@ fn launch(config: &AppConfig) -> HandlerResult<()> {
         }
     }
 
+    Ok(manager)
+}
+
+fn stop_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
+    let label = get_service_label();
+
+    // Stop our service using the underlying service management platform
+    info!("Stopping service...");
+    if let Err(e) = manager.stop(ServiceStopCtx {
+        label: label.clone(),
+    }) {
+        error!("Failed to stop service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    Ok(())
+}
+
+fn start_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
+    let label = get_service_label();
+
+    // Stop our service using the underlying service management platform
+    info!("Starting service...");
+    if let Err(e) = manager.start(ServiceStartCtx {
+        label: label.clone(),
+    }) {
+        error!("Failed to start service: {}", e);
+        return Err(HandlerError::from(e));
+    }
+
+    Ok(())
+}
+
+fn install_service(manager: &dyn ServiceManager, config: &AppConfig) -> HandlerResult<()> {
+    set_execute_permission(&config.get_bin_path())?;
+    // Create a label for our service
+    let label = get_service_label();
+    info!("Preparing to launch service with label: {}", label);
+
     // Install our service using the underlying service management platform
     info!("Installing service...");
     if let Err(e) = manager.install(ServiceInstallCtx {
@@ -222,36 +284,17 @@ fn launch(config: &AppConfig) -> HandlerResult<()> {
         return Err(HandlerError::from(e));
     }
 
-    // Start our service using the underlying service management platform
-    info!("Starting service...");
-    if let Err(e) = manager.start(ServiceStartCtx {
-        label: label.clone(),
-    }) {
-        error!("Failed to start service: {}", e);
-        return Err(HandlerError::from(e));
-    }
+    Ok(())
+}
 
-    sleep_in_seconds(1);
-
-    // Stop our service using the underlying service management platform
-    info!("Stopping service...");
-    if let Err(e) = manager.stop(ServiceStopCtx {
-        label: label.clone(),
-    }) {
-        error!("Failed to stop service: {}", e);
-        return Err(HandlerError::from(e));
-    }
-
-    sleep_in_seconds(1);
-
+fn uninstall_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
+    let label = get_service_label();
     // Uninstall our service using the underlying service management platform
     info!("Uninstalling service...");
     if let Err(e) = manager.uninstall(ServiceUninstallCtx { label }) {
         error!("Failed to uninstall service: {}", e);
         return Err(HandlerError::from(e));
     }
-
-    info!("Service lifecycle operations completed successfully.");
 
     Ok(())
 }
