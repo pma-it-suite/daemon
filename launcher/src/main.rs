@@ -2,51 +2,15 @@
 #![feature(never_type)]
 #![feature(build_hasher_simple_hash_one)]
 
-use models::HandlerResult;
+use std::path::PathBuf;
+
+use models::{AppConfig, HandlerResult, LauncherConfig, SemVer};
 use requests::{
     upstream_requests::{fetch_bin, fetch_version, BinData},
     ApiConfig,
 };
-use serde::{Deserialize, Serialize};
 
 pub fn main() {}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
-pub struct SemVer {
-    pub major: u32,
-    pub minor: u32,
-    pub patch: u32,
-}
-
-impl SemVer {
-    pub fn new(major: u32, minor: u32, patch: u32) -> Self {
-        SemVer {
-            major,
-            minor,
-            patch,
-        }
-    }
-
-    pub fn is_breaking_change(&self, other: &SemVer) -> bool {
-        self.major != other.major
-    }
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
-pub struct AppConfig {
-    pub app_path: String,
-    pub version: SemVer,
-    pub user_id: String,
-    pub user_secret: String,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
-pub struct LauncherConfig {
-    pub app_path: String,
-    pub app_version: SemVer,
-    pub launcher_version: SemVer,
-    pub user_id: String,
-}
 
 pub fn get_current_app_version() -> String {
     let _config = get_config_from_app_local();
@@ -64,6 +28,7 @@ pub async fn get_binary_from_upstream() -> HandlerResult<BinData> {
 }
 
 pub async fn install_binary_to_local(config: &LauncherConfig) -> HandlerResult<()> {
+    create_app_dir_if_none_exists(config)?;
     let file_name = &config.app_path;
     let mut file = std::fs::File::create(file_name)?;
     let mut content = get_binary_from_upstream().await?;
@@ -83,23 +48,34 @@ pub fn save_app_config_to_local() -> Result<(), ()> {
     unimplemented!()
 }
 
-pub fn has_been_installed() -> Result<bool, ()> {
-    unimplemented!()
+pub fn has_been_installed(config: &LauncherConfig) -> bool {
+    let base_path = config.app_path.parent().unwrap();
+    base_path.exists()
 }
 
-pub fn create_app_dir() -> Result<(), ()> {
-    unimplemented!()
+pub fn create_app_dir_if_none_exists(config: &LauncherConfig) -> HandlerResult<()> {
+    let base_path = config.app_path.parent().unwrap();
+    if !base_path.exists() {
+        std::fs::create_dir_all(base_path)?;
+    }
+    Ok(())
 }
 
-fn get_path() -> String {
-    unimplemented!()
+fn get_path() -> PathBuf {
+    // check the ITX_PATH env var and set to that, else set to default
+    match std::env::var("ITX_PATH") {
+        Ok(val) => PathBuf::from(val),
+        Err(_) => get_default_path(),
+    }
 }
 
-fn get_default_path() -> String {
-    unimplemented!()
+fn get_default_path() -> PathBuf {
+    PathBuf::from(shellexpand::tilde("~/.itx").into_owned())
 }
 
 pub mod models {
+    use std::path::PathBuf;
+
     use thiserror::Error;
 
     pub type Id = String;
@@ -132,6 +108,44 @@ pub mod models {
         ServerError,
         #[error("input error 4XX")]
         InputError,
+    }
+
+    use serde::{Deserialize, Serialize};
+    #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+    pub struct SemVer {
+        pub major: u32,
+        pub minor: u32,
+        pub patch: u32,
+    }
+
+    impl SemVer {
+        pub fn new(major: u32, minor: u32, patch: u32) -> Self {
+            SemVer {
+                major,
+                minor,
+                patch,
+            }
+        }
+
+        pub fn is_breaking_change(&self, other: &SemVer) -> bool {
+            self.major != other.major
+        }
+    }
+
+    #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+    pub struct AppConfig {
+        pub app_path: PathBuf,
+        pub version: SemVer,
+        pub user_id: String,
+        pub user_secret: String,
+    }
+
+    #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+    pub struct LauncherConfig {
+        pub app_path: PathBuf,
+        pub app_version: SemVer,
+        pub launcher_version: SemVer,
+        pub user_id: String,
     }
 }
 
