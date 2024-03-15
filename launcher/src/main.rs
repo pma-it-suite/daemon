@@ -1,8 +1,7 @@
 #![feature(async_closure)]
 #![feature(never_type)]
 
-pub fn main() {
-}
+pub fn main() {}
 
 pub mod models {
     use thiserror::Error;
@@ -341,3 +340,180 @@ pub mod localstore {
     }
 }
 
+#[cfg(test)]
+pub mod test_commons {
+    use std::sync::Mutex;
+
+    use crate::{requests::ApiConfig, localstore::get_default_filepath};
+    use lazy_static::lazy_static;
+    use mockito;
+
+    lazy_static! {
+        static ref SETUP_DONE: Mutex<bool> = Mutex::new(false);
+    }
+
+    fn once() {
+        let mut setup_done = SETUP_DONE.lock().unwrap();
+        if *setup_done {
+            return;
+        }
+        std::env::set_var("RUST_LOG", "debug");
+        simple_logger::SimpleLogger::new().env().init().unwrap();
+        *setup_done = true;
+    }
+
+    pub fn before_each() {
+        once();
+    }
+
+    pub fn before_each_fs() {
+        once();
+        delete_file_if_exists();
+    }
+
+    fn delete_file_if_exists() {
+        let test_path = get_default_filepath();
+        if std::path::Path::new(&test_path).exists() {
+            std::fs::remove_file(&test_path).unwrap();
+        }
+    }
+
+    pub fn get_api_config_with_port(port: u16) -> ApiConfig {
+        ApiConfig::new("http://127.0.0.1".to_string(), Some(port))
+    }
+
+    pub fn setup_server() -> (mockito::Server, ApiConfig) {
+        let opts = mockito::ServerOpts {
+            host: "127.0.0.1",
+            ..Default::default()
+        };
+        let server = mockito::Server::new_with_opts(opts);
+
+        let port = server.socket_address().port();
+
+        (server, get_api_config_with_port(port))
+    }
+
+    pub fn get_404_json_string() -> String {
+        r#"{"error": "not found"}"#.to_string()
+    }
+
+    pub fn get_500_json_string() -> String {
+        "server error".to_string()
+    }
+}
+
+pub mod requests {
+    use crate::models::HandlerError;
+    use futures::future::BoxFuture;
+    use log::{error, warn};
+    use reqwest::StatusCode;
+    pub type ApiResult<T> = Result<T, HandlerError>;
+
+    fn get_client() -> reqwest::Client {
+        reqwest::Client::new()
+    }
+
+    pub struct ApiConfig {
+        pub host: String,
+        pub port: Option<u16>,
+    }
+
+    impl ApiConfig {
+        pub fn new(host: String, port: Option<u16>) -> Self {
+            ApiConfig { host, port }
+        }
+
+        fn get_port_string_if_any(&self) -> String {
+            match self.port {
+                Some(val) => format!(":{}", &val),
+                None => "".to_string(),
+            }
+        }
+
+        pub fn with_path(&self, path: &str) -> String {
+            let port_string = self.get_port_string_if_any();
+            format!("{}{}{}", self.host, port_string, path)
+        }
+    }
+
+    impl Default for ApiConfig {
+        fn default() -> Self {
+            ApiConfig {
+                host: "http://127.0.0.1".to_string(),
+                port: Some(5001),
+                // host: "https://api.itx-app.com".to_string(),
+                // port: None,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use crate::requests::ApiConfig;
+
+        #[test]
+        fn test_api_config_with_path() {
+            let host = "testhost".to_string();
+            let port = Some(5001);
+            let config = ApiConfig::new(host, port);
+
+            let path = "/testpath";
+            let result = config.with_path(path);
+
+            let expected = "testhost:5001/testpath";
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_api_config_with_path_no_port() {
+            let host = "testhost".to_string();
+            let port = None;
+            let config = ApiConfig::new(host, port);
+
+            let path = "/testpath";
+            let result = config.with_path(path);
+
+            let expected = "testhost/testpath";
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_default_api_config_with_path() {
+            let config = ApiConfig::default();
+
+            let path = "/testpath";
+            let _ = config.with_path(path);
+        }
+    }
+
+    async fn handle_response<T>(
+        response: reqwest::Response,
+        on_ok: impl Fn(reqwest::Response) -> BoxFuture<'static, Result<T, HandlerError>>,
+    ) -> Result<T, HandlerError> {
+        let status = response.status();
+        if let StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT = status {
+            Ok(on_ok(response).await?)
+        } else {
+            let text = response.text().await?;
+            match status {
+                StatusCode::NOT_FOUND => {
+                    warn!("No commands found: {}", &text);
+                    Err(HandlerError::NotFound)
+                }
+                StatusCode::INTERNAL_SERVER_ERROR => {
+                    error!("server error on fetch: {}", &text);
+                    Err(HandlerError::ServerError)
+                }
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+                    warn!("error in data passed in: {}", &text);
+                    Err(HandlerError::InputError)
+                }
+                _ => {
+                    warn!("unknown error code: {}, {}", &text, status);
+                    Err(HandlerError::ApiError)
+                }
+            }
+        }
+    }
+}
