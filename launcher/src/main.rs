@@ -11,7 +11,8 @@ use requests::{
     ApiConfig,
 };
 
-pub fn main() {
+#[tokio::main]
+async fn main() -> ! {
     /*
      * 1. make sure launcher config is good on local
      *      - NOTE: for now, hardcoded default. Eventually populate from initial distribution pkg
@@ -42,6 +43,19 @@ pub fn main() {
      * 6. run app with launcherd
      * 7. monitor and set schedule to start from step (1) every N hours/minutes/days
      */
+    let config = LauncherConfig {
+        app_path: get_path(),
+        app_version: SemVer::new(0, 0, 0),
+        launcher_version: SemVer::new(0, 0, 1),
+        user_id: "9c66d842-cab9-4bff-93be-b05388f652e7".to_string(),
+        user_secret: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJmZDI5MTRlYy0wMTBhLTRkNDYtYjk1YS01MzdhMzRmYWQ3MjIiLCJ1c2VyX2lkIjoiOWM2NmQ4NDItY2FiOS00YmZmLTkzYmUtYjA1Mzg4ZjY1MmU3IiwiZXhwIjoxNzEwNDU1OTg2fQ.II_lTbMcMp4-dywN4QAorqdJBZobM8cyC-KTgp96GeY".to_string(),
+        has_app_been_installed: false,
+    };
+    let store = LocalStore::from(PathBuf::from("launcherdata.json"), &config).unwrap(); // TODO: handle error
+    let data = store.get_all_data().unwrap(); // TODO: handle error
+    assert_eq!(config, data);
+
+    panic!();
 }
 
 pub fn get_current_app_version(store: &LocalStore) -> HandlerResult<String> {
@@ -115,7 +129,7 @@ fn get_default_path() -> PathBuf {
 }
 
 pub mod models {
-    use serde::ser::{SerializeStruct, Serializer};
+
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
 
@@ -153,7 +167,7 @@ pub mod models {
         InputError,
     }
 
-    #[derive(Debug, PartialEq, Eq, Deserialize, Clone, Default)]
+    #[derive(Debug, PartialEq, Eq, Deserialize, Clone, Default, Serialize)]
     pub struct SemVer {
         pub major: u32,
         pub minor: u32,
@@ -173,20 +187,6 @@ pub mod models {
             self.major != other.major
         }
     }
-    impl Serialize for SemVer {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            // 3 is the number of fields in the struct.
-            let mut state = serializer.serialize_struct("SemVer", 1)?;
-            state.serialize_field(
-                "version",
-                &format!("{}.{}.{}", &self.major, &self.minor, &self.patch),
-            )?;
-            state.end()
-        }
-    }
 
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
     pub struct AppConfig {
@@ -202,6 +202,7 @@ pub mod models {
         pub app_version: SemVer,
         pub launcher_version: SemVer,
         pub user_id: String,
+        pub user_secret: String,
         pub has_app_been_installed: bool,
     }
 }

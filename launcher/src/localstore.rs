@@ -32,7 +32,7 @@ impl LocalStore {
         // read all data through fs api and return it
         let file_path = &self.path;
         let file_data = std::fs::read_to_string(file_path)?;
-        let data: T = serde_json::from_value(serde_json::Value::String(file_data))?;
+        let data: T = serde_json::from_str(&file_data)?;
         Ok(data)
     }
 
