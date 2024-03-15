@@ -43,7 +43,7 @@ async fn main() -> ! {
      * 6. run app with launcherd
      * 7. monitor and set schedule to start from step (1) every N hours/minutes/days
      */
-    let config = LauncherConfig {
+    let init_config = LauncherConfig {
         app_path: get_path(),
         app_version: SemVer::new(0, 0, 0),
         launcher_version: SemVer::new(0, 0, 1),
@@ -51,18 +51,72 @@ async fn main() -> ! {
         user_secret: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJmZDI5MTRlYy0wMTBhLTRkNDYtYjk1YS01MzdhMzRmYWQ3MjIiLCJ1c2VyX2lkIjoiOWM2NmQ4NDItY2FiOS00YmZmLTkzYmUtYjA1Mzg4ZjY1MmU3IiwiZXhwIjoxNzEwNDU1OTg2fQ.II_lTbMcMp4-dywN4QAorqdJBZobM8cyC-KTgp96GeY".to_string(),
         has_app_been_installed: false,
     };
-    let store = LocalStore::from(PathBuf::from("launcherdata.json"), &config).unwrap(); // TODO: handle error
-    let data = store.get_all_data().unwrap(); // TODO: handle error
-    assert_eq!(config, data);
+    let launcher_store =
+        LocalStore::from(PathBuf::from("launcherdata.json"), &init_config).unwrap(); // TODO: handle error
+    let mut config = launcher_store.get_all_data().unwrap(); // TODO: handle error
+    assert_eq!(init_config, config); // TODO: remove later
+
+    assert!(requests::upstream_requests::ping(&ApiConfig::default())
+        .await
+        .unwrap()); // TODO: handle error - loop and sleep
+
+    let upstream_version = get_upstream_app_version().await.unwrap(); // TODO: handle error
+
+    let app_store = LocalStore::new(config.app_path.join("appdata.json")).unwrap(); // TODO: handle error
+    let app_config_result = get_config_from_app_local(&app_store); // TODO: handle error
+
+    match config.has_app_been_installed {
+        false => {
+            pull_from_upstream_and_install_binary_to_local(&config)
+                .await
+                .unwrap(); // TODO: handle error
+            let app_config = AppConfig {
+                app_path: config.app_path.clone(),
+                version: upstream_version,
+                user_id: config.user_id.clone(),
+                user_secret: config.user_secret.clone(),
+            };
+
+            save_app_config_to_local(&app_store, &app_config).unwrap(); // TODO: handle error
+
+            config.has_app_been_installed = true;
+            config.app_version = upstream_version;
+            save_launcher_config_to_local(&launcher_store, &config).unwrap(); // TODO: handle error
+        }
+        true => {
+            let mut app_config = app_config_result.unwrap();
+            if app_config.version < upstream_version {
+                delete_bin_from_local(&config).unwrap(); // TODO: handle error
+                pull_from_upstream_and_install_binary_to_local(&config)
+                    .await
+                    .unwrap(); // TODO: handle error
+                app_config.version = upstream_version;
+
+                save_app_config_to_local(&app_store, &app_config).unwrap(); // TODO: handle error
+
+                config.app_version = upstream_version;
+                save_launcher_config_to_local(&launcher_store, &config).unwrap();
+                // TODO: handle error
+            }
+        }
+    }
+
+    let app_config = get_config_from_app_local(&app_store).unwrap(); // TODO: handle error
+    launch_app_with_launcherd(&app_config).unwrap(); // TODO: handle error
 
     panic!();
 }
 
-pub fn get_current_app_version(store: &LocalStore) -> HandlerResult<String> {
-    Ok(store
-        .query("version")
-        .unwrap()
-        .unwrap_or("0.0.0".to_string()))
+pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
+    let mut cmd = std::process::Command::new(&config.app_path);
+    cmd.spawn()?;
+    Ok(())
+}
+
+pub fn delete_bin_from_local(config: &LauncherConfig) -> HandlerResult<()> {
+    let base_path = config.app_path.parent().unwrap();
+    std::fs::remove_dir_all(base_path)?;
+    Ok(())
 }
 
 pub async fn get_upstream_app_version() -> HandlerResult<SemVer> {
@@ -75,7 +129,9 @@ pub async fn get_binary_from_upstream() -> HandlerResult<BinData> {
     fetch_bin(&config).await
 }
 
-pub async fn install_binary_to_local(config: &LauncherConfig) -> HandlerResult<()> {
+pub async fn pull_from_upstream_and_install_binary_to_local(
+    config: &LauncherConfig,
+) -> HandlerResult<()> {
     create_app_dir_if_none_exists(config)?;
     let file_name = &config.app_path;
     let mut file = std::fs::File::create(file_name)?;
@@ -131,7 +187,7 @@ fn get_default_path() -> PathBuf {
 pub mod models {
 
     use serde::{Deserialize, Serialize};
-    use std::path::PathBuf;
+    use std::{cmp::Ordering, path::PathBuf};
 
     use thiserror::Error;
 
@@ -167,11 +223,29 @@ pub mod models {
         InputError,
     }
 
-    #[derive(Debug, PartialEq, Eq, Deserialize, Clone, Default, Serialize)]
+    #[derive(Debug, PartialEq, Eq, Deserialize, Clone, Default, Serialize, Copy)]
     pub struct SemVer {
         pub major: u32,
         pub minor: u32,
         pub patch: u32,
+    }
+
+    impl PartialOrd for SemVer {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for SemVer {
+        fn cmp(&self, other: &Self) -> Ordering {
+            let this: u32 = format!("{}{}{}", self.major, self.minor, self.patch)
+                .parse()
+                .unwrap();
+            let other: u32 = format!("{}{}{}", other.major, other.minor, other.patch)
+                .parse()
+                .unwrap();
+            this.cmp(&other)
+        }
     }
 
     impl SemVer {
@@ -258,6 +332,7 @@ pub mod requests {
 
         use futures::future::BoxFuture;
         use log::info;
+        use serde::{Deserialize, Serialize};
 
         pub type BinData = Cursor<bytes::Bytes>;
 
@@ -268,6 +343,11 @@ pub mod requests {
         };
 
         use super::ApiConfig;
+
+        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+        struct Ping {
+            ok: bool,
+        }
 
         pub async fn fetch_version(config: &ApiConfig) -> HandlerResult<SemVer> {
             let url = config.with_path("/semverTest.json");
@@ -293,6 +373,24 @@ pub mod requests {
                 Box::pin(async move { Ok(Cursor::new(response.bytes().await?)) })
             };
             handle_response(response, bind).await
+        }
+
+        pub async fn ping(config: &ApiConfig) -> HandlerResult<bool> {
+            let url = config.with_path("/ping.json");
+            let response = get_client().get(url).send().await?;
+
+            let status = response.status();
+            info!("Response status for fetch version: {}", status);
+
+            let bind = |response: reqwest::Response| -> BoxFuture<'static, ApiResult<Ping>> {
+                Box::pin(async move { Ok(response.json().await?) })
+            };
+            let response = handle_response(response, bind).await;
+
+            match response {
+                Ok(ping) => Ok(ping.ok),
+                Err(_) => Ok(false),
+            }
         }
     }
 
