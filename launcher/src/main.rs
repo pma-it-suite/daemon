@@ -8,8 +8,8 @@ use std::fs::{self};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::thread;
 use std::time::Duration;
+use std::{env, thread};
 
 use localstore::LocalStore;
 use log::{debug, error, info};
@@ -57,6 +57,35 @@ async fn main() -> ! {
     simple_logger::SimpleLogger::new().env().init().unwrap();
 
     info!("Launcher starting...");
+
+    // if arg passed in is "start, stop, restart" then do handle and panic early
+    // else do normal flow
+    let args: Vec<String> = env::args().collect();
+    if args.len() == 2 {
+        let binded_manager = get_manager().expect("Failed to get service manager.");
+        let manager = binded_manager.as_ref();
+        match args[1].as_str() {
+            "start" => {
+                info!("Starting service...");
+                start_service(manager).expect("Failed to start service.");
+                panic!();
+            }
+            "stop" => {
+                info!("Stopping service...");
+                stop_service(manager).expect("Failed to stop service.");
+                panic!();
+            }
+            "restart" => {
+                info!("Restarting service...");
+                stop_service(manager).expect("Failed to stop service.");
+                start_service(manager).expect("Failed to start service.");
+                panic!();
+            }
+            _ => {
+                // do nothing
+            }
+        }
+    }
 
     let launcher_store = match does_local_launcher_config_exist() {
         true => {
@@ -126,7 +155,7 @@ async fn main() -> ! {
     let mut needs_start = false;
 
     let binded_manager = get_manager().expect("Failed to get service manager.");
-    let manager  = binded_manager.as_ref();
+    let manager = binded_manager.as_ref();
 
     debug!("Processing based on app installation status...");
     let needs_install = match config.has_app_been_installed {
@@ -142,7 +171,6 @@ async fn main() -> ! {
 
             debug!("Saving app configuration...");
             let app_config = AppConfig {
-                device_id: "".to_string(),
                 bin_name: config.bin_name.clone(),
                 app_path: config.app_path.clone(),
                 version: upstream_version,
@@ -300,8 +328,11 @@ fn uninstall_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
 }
 
 fn get_secrets_from_env() -> (String, String) {
-    let user_id = std::env::var("ITX_USER_ID").expect("ITX_USER_ID not set");
-    let user_secret = std::env::var("ITX_USER_SECRET").expect("ITX_USER_SECRET not set");
+    // let user_id = std::env::var("ITX_USER_ID").expect("ITX_USER_ID not set");
+    // let user_secret = std::env::var("ITX_USER_SECRET").expect("ITX_USER_SECRET not set");
+    let user_id = "ef037a4c-97ca-4571-ab5d-1d36505889c4".to_string();
+    let user_secret ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJOb25lIiwidXNlcl9pZCI6ImVmMDM3YTRjLTk3Y2EtNDU3MS1hYjVkLTFkMzY1MDU4ODljNCIsImV4cCI6MTcxMDcyMDcxMn0.91RmQlV9RCF3UJlzx6SOb-dx_-W7Fev5KcNZ_bZO5RA".to_string();
+
     (user_id, user_secret)
 }
 
@@ -512,7 +543,6 @@ pub mod models {
         pub version: SemVer,
         pub user_id: String,
         pub user_secret: String,
-        pub device_id: String,
     }
 
     #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
