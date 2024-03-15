@@ -2,15 +2,20 @@
 #![feature(never_type)]
 #![feature(build_hasher_simple_hash_one)]
 
+use std::fs::{self};
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 
 use localstore::LocalStore;
-use log::info;
+use log::{debug, error, info};
 use models::{AppConfig, GetBinPath, HandlerResult, LauncherConfig, SemVer};
 use requests::{
     upstream_requests::{fetch_bin, fetch_version, BinData},
     ApiConfig,
 };
+
+use crate::models::HandlerError;
 
 #[tokio::main]
 async fn main() -> ! {
@@ -47,8 +52,11 @@ async fn main() -> ! {
     std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
 
+    info!("Launcher starting...");
+
     let init_config = LauncherConfig {
         app_path: get_path(),
+        // Additional logging for configuration load
         bin_name: "itx".to_string(),
         app_version: SemVer::new(0, 0, 0),
         launcher_version: SemVer::new(0, 0, 1),
@@ -56,25 +64,54 @@ async fn main() -> ! {
         user_secret: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJmZDI5MTRlYy0wMTBhLTRkNDYtYjk1YS01MzdhMzRmYWQ3MjIiLCJ1c2VyX2lkIjoiOWM2NmQ4NDItY2FiOS00YmZmLTkzYmUtYjA1Mzg4ZjY1MmU3IiwiZXhwIjoxNzEwNDU1OTg2fQ.II_lTbMcMp4-dywN4QAorqdJBZobM8cyC-KTgp96GeY".to_string(),
         has_app_been_installed: false,
     };
-    let launcher_store =
-        LocalStore::from(PathBuf::from("launcherdata.json"), &init_config).unwrap(); // TODO: handle error
-    let mut config = launcher_store.get_all_data().unwrap(); // TODO: handle error
-    assert_eq!(init_config, config); // TODO: remove later
 
+    debug!("Launcher initial configuration loaded.");
+
+    let launcher_store = match LocalStore::from(PathBuf::from("launcherdata.json"), &init_config) {
+        Ok(store) => store,
+        Err(e) => {
+            error!("Failed to create LocalStore from launcherdata.json: {}", e);
+            panic!("Launcher initialization failure.");
+        }
+    };
+
+    info!("Checking launcher configuration...");
+    let mut config = match launcher_store.get_all_data() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            error!("Failed to get launcher configuration: {}", e);
+            panic!("Launcher configuration retrieval failure.");
+        }
+    };
+
+    debug!("Configuration assert check...");
+    assert_eq!(init_config, config);
+
+    info!("Pinging upstream server...");
     assert!(requests::upstream_requests::ping(&ApiConfig::default())
         .await
-        .unwrap()); // TODO: handle error - loop and sleep
+        .expect("Failed to ping upstream server."));
 
-    let upstream_version = get_upstream_app_version().await.unwrap(); // TODO: handle error
+    info!("Fetching upstream version...");
+    let upstream_version = get_upstream_app_version()
+        .await
+        .expect("Failed to fetch upstream version.");
 
-    let app_store = LocalStore::new(config.app_path.join("appdata.json")).unwrap(); // TODO: handle error
-    let app_config_result = get_config_from_app_local(&app_store); // TODO: handle error
+    let app_store = LocalStore::new(config.app_path.join("appdata.json"))
+        .expect("Failed to create app LocalStore.");
 
+    info!("Checking app configuration...");
+    let app_config_result = get_config_from_app_local(&app_store);
+
+    debug!("Processing based on app installation status...");
     match config.has_app_been_installed {
         false => {
+            info!("App not installed, pulling from upstream...");
             pull_from_upstream_and_install_binary_to_local(&config)
                 .await
-                .unwrap(); // TODO: handle error
+                .expect("Failed to install binary from upstream.");
+
+            debug!("Saving app configuration...");
             let app_config = AppConfig {
                 bin_name: config.bin_name.clone(),
                 app_path: config.app_path.clone(),
@@ -82,42 +119,71 @@ async fn main() -> ! {
                 user_id: config.user_id.clone(),
                 user_secret: config.user_secret.clone(),
             };
-
-            save_app_config_to_local(&app_store, &app_config).unwrap(); // TODO: handle error
+            save_app_config_to_local(&app_store, &app_config)
+                .expect("Failed to save app configuration.");
 
             config.has_app_been_installed = true;
             config.app_version = upstream_version;
-            save_launcher_config_to_local(&launcher_store, &config).unwrap(); // TODO: handle error
+            save_launcher_config_to_local(&launcher_store, &config)
+                .expect("Failed to save launcher configuration.");
         }
         true => {
-            let mut app_config = app_config_result.unwrap();
+            let mut app_config = app_config_result.expect("Failed to get app configuration.");
+
             if app_config.version < upstream_version {
-                delete_bin_from_local(&config).unwrap(); // TODO: handle error
+                info!("New version available, updating app...");
+                delete_bin_from_local(&config).expect("Failed to delete local binary.");
                 pull_from_upstream_and_install_binary_to_local(&config)
                     .await
-                    .unwrap(); // TODO: handle error
+                    .expect("Failed to install binary from upstream.");
                 app_config.version = upstream_version;
 
-                save_app_config_to_local(&app_store, &app_config).unwrap(); // TODO: handle error
-
+                save_app_config_to_local(&app_store, &app_config)
+                    .expect("Failed to save updated app configuration.");
                 config.app_version = upstream_version;
-                save_launcher_config_to_local(&launcher_store, &config).unwrap();
-                // TODO: handle error
+                save_launcher_config_to_local(&launcher_store, &config)
+                    .expect("Failed to save updated launcher configuration.");
             }
         }
     }
 
-    let app_config = get_config_from_app_local(&app_store).unwrap(); // TODO: handle error
-    launch_app_with_launcherd(&app_config).unwrap(); // TODO: handle error
+    info!("Launching app...");
+    let app_config =
+        get_config_from_app_local(&app_store).expect("Failed to get app configuration for launch.");
+    launch_app_with_launcherd(&app_config).expect("Failed to launch app.");
 
     panic!();
 }
 
 pub fn launch_app_with_launcherd(config: &AppConfig) -> HandlerResult<()> {
-    let file_name = &config.get_bin_path();
-    info!("launching app with file: {}", file_name.to_str().unwrap());
-    let mut cmd = std::process::Command::new(file_name);
+    let file_path = &config.get_bin_path();
+    match set_execute_permission(file_path) {
+        Ok(_) => {
+            info!(
+                "Execute permissions set for file: {}",
+                file_path.to_str().unwrap()
+            );
+        }
+        Err(e) => {
+            error!("Failed to set execute permissions: {}", e);
+            return Err(HandlerError::from(e));
+        }
+    }
+
+    info!("launching app with file: {}", file_path.to_str().unwrap());
+    let mut cmd = std::process::Command::new(file_path);
     cmd.spawn()?;
+    Ok(())
+}
+
+fn set_execute_permission(file_path: &Path) -> std::io::Result<()> {
+    let metadata = fs::metadata(file_path)?;
+    let mut permissions = metadata.permissions();
+
+    // This adds execute permissions for the owner, group, and others
+    permissions.set_mode(0o755); // Read & execute for everyone, write for owner
+
+    fs::set_permissions(file_path, permissions)?;
     Ok(())
 }
 
