@@ -10,6 +10,10 @@ pub async fn handoff_command_to_executor(
     match &command.name {
         CommandNames::Test => {
             // TODO @felipearce: add test command here
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("say 'this is a new new new test'")
+                .output();
             Ok(Some("test".to_string()))
         }
         CommandNames::ShellCmd => {

@@ -12,7 +12,7 @@ use std::time::Duration;
 use std::{env, thread};
 
 use localstore::LocalStore;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use models::{AppConfig, GetBinPath, HandlerResult, LauncherConfig, SemVer};
 use requests::{
     upstream_requests::{fetch_bin, fetch_version, BinData},
@@ -22,7 +22,8 @@ use requests::{
 use crate::models::HandlerError;
 
 const SLEEP_VERY_LONG: u64 = 60;
-const SLEEP_EXTREMELY_LONG: u64 = 60 * 60 * 24; // 24 hours
+// const SLEEP_EXTREMELY_LONG: u64 = 60 * 60 * 24; // 24 hours
+const SLEEP_EXTREMELY_LONG: u64 = 30;
 
 #[tokio::main]
 async fn main() -> ! {
@@ -66,9 +67,7 @@ async fn main() -> ! {
         match simple_logger::SimpleLogger::new().env().init() {
             Ok(_) => {}
             Err(e) => {
-                error!("Failed to setup logger: {}", e);
-                sleep_in_seconds(SLEEP_VERY_LONG);
-                continue;
+                trace!("Failed to setup logger: {}", e);
             }
         }
 

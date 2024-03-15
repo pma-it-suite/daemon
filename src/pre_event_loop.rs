@@ -48,7 +48,7 @@ async fn get_device_id_inner(
             write_single(&received_id, device_id_key)?;
             info!("stored device id: {}", &received_id);
             received_id
-        },
+        }
     };
 
     info!("device id retrieved from store is {}", device_id);
