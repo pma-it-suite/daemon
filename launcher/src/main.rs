@@ -1,12 +1,106 @@
 #![feature(async_closure)]
 #![feature(never_type)]
+#![feature(build_hasher_simple_hash_one)]
 
-pub fn main() {}
+use models::HandlerResult;
+use serde::{Deserialize, Serialize};
+
+
+pub fn main() {
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+pub struct SemVer {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl SemVer {
+    pub fn new(major: u32, minor: u32, patch: u32) -> Self {
+        SemVer {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    pub fn is_breaking_change(&self, other: &SemVer) -> bool {
+        self.major != other.major
+    }
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+pub struct AppConfig {
+    pub version: SemVer,
+    pub user_id: String,
+    pub user_secret: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
+pub struct LauncherConfig {
+    pub app_path: String,
+    pub app_version: SemVer,
+    pub launcher_version: SemVer,
+    pub user_id: String,
+}
+
+pub fn get_current_app_version() -> String {
+    let config = get_config_from_app_local();
+    unimplemented!()
+}
+
+pub fn get_upstream_app_version() -> String {
+    unimplemented!()
+}
+
+pub fn get_upstream_endpoint() -> String {
+    unimplemented!()
+}
+
+pub fn get_binary_from_upstream() -> Result<(), ()> {
+    unimplemented!()
+}
+
+pub fn install_binary_to_local() -> Result<(), ()> {
+    unimplemented!()
+}
+
+pub fn get_config_from_launcher_local() -> Result<(), ()> {
+    unimplemented!()
+}
+
+pub fn get_config_from_app_local() -> HandlerResult<AppConfig> {
+    unimplemented!()
+}
+
+pub fn save_app_config_to_local() -> Result<(), ()> {
+    unimplemented!()
+}
+
+pub fn has_been_installed() -> Result<bool, ()> {
+    unimplemented!()
+}
+
+pub fn create_app_dir() -> Result<(), ()> {
+    unimplemented!()
+}
+
+fn get_path() -> String {
+    unimplemented!()
+}
+
+fn get_default_path() -> String {
+    unimplemented!()
+}
+
 
 pub mod models {
     use thiserror::Error;
 
     pub type Id = String;
+
+    pub type HandlerResult<T> = Result<T, HandlerError>;
 
     #[derive(Error, Debug)]
     pub enum HandlerError {
