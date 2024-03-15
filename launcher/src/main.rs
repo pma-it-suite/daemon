@@ -21,6 +21,9 @@ use requests::{
 
 use crate::models::HandlerError;
 
+const SLEEP_VERY_LONG: u64 = 60;
+const SLEEP_EXTREMELY_LONG: u64 = 60 * 60 * 24; // 24 hours
+
 #[tokio::main]
 async fn main() -> ! {
     /*
@@ -54,12 +57,176 @@ async fn main() -> ! {
      * 7. monitor and set schedule to start from step (1) every N hours/minutes/days
      */
     std::env::set_var("RUST_LOG", "info");
-    simple_logger::SimpleLogger::new().env().init().unwrap();
 
     info!("Launcher starting...");
 
     // if arg passed in is "start, stop, restart" then do handle and panic early
     // else do normal flow
+    loop {
+        match simple_logger::SimpleLogger::new().env().init() {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Failed to setup logger: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        }
+
+        if does_have_args_and_handle_input_args() {
+            panic!("with args - break loop");
+        }
+
+        let (launcher_store, mut config) = match get_launcher_config_and_store() {
+            Ok((store, cfg)) => (store, cfg),
+            Err(e) => {
+                error!("Failed to get launcher configuration: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        };
+
+        let upstream_version = match ping_server_and_get_upstream_app_version().await {
+            Ok(version) => version,
+            Err(e) => {
+                error!("Failed to get upstream app version: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        };
+
+        let (app_store, app_config_result) = match get_app_store_and_data(&config) {
+            Ok((store, cfg)) => (store, cfg),
+            Err(e) => {
+                error!("Failed to get app configuration: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        };
+
+        if app_config_result.is_some() {
+            info!("App configuration found.");
+        } else {
+            info!("No app configuration found, setting launcher config to not installed...");
+            config.has_app_been_installed = false;
+        }
+
+        let mut needs_start = false;
+
+        let binded_manager = match get_manager() {
+            Ok(manager) => manager,
+            Err(e) => {
+                error!("Failed to get service manager: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        };
+        let manager = binded_manager.as_ref();
+
+        debug!("Processing based on app installation status...");
+
+        let needs_install = match config.has_app_been_installed {
+            false => {
+                match install_app_fresh(
+                    &mut config,
+                    manager,
+                    &launcher_store,
+                    &app_store,
+                    upstream_version,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        info!("App installed successfully.");
+                    }
+                    Err(e) => {
+                        error!("Failed to install app: {}", e);
+                        continue;
+                    }
+                }
+
+                needs_start = true;
+                true
+            }
+            true => {
+                let mut app_config = match app_config_result.is_some() {
+                    true => app_config_result.unwrap(),
+                    false => {
+                        error!("App configuration not found.");
+                        sleep_in_seconds(SLEEP_VERY_LONG);
+                        continue;
+                    }
+                };
+
+                if app_config.version < upstream_version {
+                    match install_in_place(
+                        &mut config,
+                        manager,
+                        &launcher_store,
+                        &app_store,
+                        upstream_version,
+                        &mut app_config,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            info!("App updated successfully.");
+                        }
+                        Err(e) => {
+                            error!("Failed to update app: {}", e);
+                            continue;
+                        }
+                    }
+                    needs_start = true;
+                } else {
+                    info!("App is up to date. No launch required");
+                    needs_start = false;
+                }
+
+                false
+            }
+        };
+
+        info!("Launching app...");
+        let app_config = match get_config_from_app_local(&app_store) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                error!("Failed to get app configuration: {}", e);
+                sleep_in_seconds(SLEEP_VERY_LONG);
+                continue;
+            }
+        };
+
+        if needs_install {
+            match install_service(manager, &app_config) {
+                Ok(_) => {
+                    info!("Service installed successfully.");
+                }
+                Err(e) => {
+                    error!("Failed to install service: {}", e);
+                    sleep_in_seconds(SLEEP_VERY_LONG);
+                }
+            }
+        }
+
+        if needs_start {
+            info!("Start requested, starting service...");
+            match start_service(manager) {
+                Ok(_) => {
+                    info!("Service started successfully.");
+                }
+                Err(e) => {
+                    error!("Failed to start service: {}", e);
+                    sleep_in_seconds(SLEEP_VERY_LONG);
+                }
+            }
+        } else {
+            info!("No start requested, skipping service start.");
+            sleep_in_seconds(SLEEP_EXTREMELY_LONG);
+        }
+    }
+}
+
+pub fn does_have_args_and_handle_input_args() -> bool {
     let args: Vec<String> = env::args().collect();
     if args.len() == 2 {
         let binded_manager = get_manager().expect("Failed to get service manager.");
@@ -68,31 +235,32 @@ async fn main() -> ! {
             "start" => {
                 info!("Starting service...");
                 start_service(manager).expect("Failed to start service.");
-                panic!();
+                true
             }
             "stop" => {
                 info!("Stopping service...");
                 stop_service(manager).expect("Failed to stop service.");
-                panic!();
+                true
             }
             "restart" => {
                 info!("Restarting service...");
                 stop_service(manager).expect("Failed to stop service.");
                 start_service(manager).expect("Failed to start service.");
-                panic!();
+                true
             }
-            _ => {
-                // do nothing
-            }
+            _ => false,
         }
+    } else {
+        false
     }
+}
 
+pub fn get_launcher_config_and_store() -> HandlerResult<(LocalStore, LauncherConfig)> {
     let launcher_store = match does_local_launcher_config_exist() {
         true => {
             info!("Launcher configuration found.");
 
-            LocalStore::new(PathBuf::from(get_launcher_store_file_name()))
-                .expect("Failed to create LocalStore.")
+            LocalStore::new(PathBuf::from(get_launcher_store_file_name()))?
         }
         false => {
             info!("No launcher configuration found, creating...");
@@ -115,124 +283,107 @@ async fn main() -> ! {
                 Ok(store) => store,
                 Err(e) => {
                     error!("Failed to create LocalStore from launcherdata.json: {}", e);
-                    panic!("Launcher initialization failure.");
+                    return Err(e);
                 }
             }
         }
     };
 
-    let mut config: LauncherConfig = match launcher_store.get_all_data() {
+    let config: LauncherConfig = match launcher_store.get_all_data() {
         Ok(cfg) => cfg,
         Err(e) => {
             error!("Failed to get launcher configuration: {}", e);
-            panic!("Launcher configuration retrieval failure.");
+            return Err(e);
         }
     };
+    Ok((launcher_store, config))
+}
 
+pub async fn ping_server_and_get_upstream_app_version() -> HandlerResult<SemVer> {
     info!("Pinging upstream server...");
-    assert!(requests::upstream_requests::ping(&ApiConfig::default())
-        .await
-        .expect("Failed to ping upstream server."));
+    let resp = requests::upstream_requests::ping(&ApiConfig::default()).await;
+    if let Ok(true) = resp {
+        info!("Upstream server is healthy.");
+    } else {
+        error!("Upstream server is unhealthy.");
+        return Err(HandlerError::Unknown);
+    }
 
     info!("Fetching upstream version...");
-    let upstream_version = get_upstream_app_version()
-        .await
-        .expect("Failed to fetch upstream version.");
+    let upstream_version = get_upstream_app_version().await?;
 
-    let app_store = LocalStore::new(config.app_path.join("appdata.json"))
-        .expect("Failed to create app LocalStore.");
+    Ok(upstream_version)
+}
+
+pub fn get_app_store_and_data(
+    config: &LauncherConfig,
+) -> HandlerResult<(LocalStore, Option<AppConfig>)> {
+    let app_store = LocalStore::new(config.app_path.join("appdata.json"))?;
 
     info!("Checking app configuration...");
-    let app_config_result = get_config_from_app_local(&app_store);
-
-    if app_config_result.is_ok() {
-        info!("App configuration found.");
-    } else {
-        info!("No app configuration found, setting launcher config to not installed...");
-        config.has_app_been_installed = false;
+    match get_config_from_app_local(&app_store) {
+        Ok(cfg) => {
+            info!("App configuration found.");
+            Ok((app_store, Some(cfg)))
+        }
+        Err(e) => {
+            error!("Failed to get app configuration: {}", e);
+            Ok((app_store, None))
+        }
     }
+}
 
-    let mut needs_start = false;
+pub async fn install_app_fresh(
+    config: &mut LauncherConfig,
+    manager: &dyn ServiceManager,
+    launcher_store: &LocalStore,
+    app_store: &LocalStore,
+    upstream_version: SemVer,
+) -> HandlerResult<()> {
+    info!("Attempting to stop and uninstall service as failsafe (ignoring failures)...");
+    let _ = stop_service(manager);
+    let _ = uninstall_service(manager);
 
-    let binded_manager = get_manager().expect("Failed to get service manager.");
-    let manager = binded_manager.as_ref();
+    info!("App not installed, pulling from upstream...");
+    pull_from_upstream_and_install_binary_to_local(config).await?;
 
-    debug!("Processing based on app installation status...");
-    let needs_install = match config.has_app_been_installed {
-        false => {
-            info!("Attempting to stop and uninstall service as failsafe (ignoring failures)...");
-            let _ = stop_service(manager);
-            let _ = uninstall_service(manager);
-
-            info!("App not installed, pulling from upstream...");
-            pull_from_upstream_and_install_binary_to_local(&config)
-                .await
-                .expect("Failed to install binary from upstream.");
-
-            debug!("Saving app configuration...");
-            let app_config = AppConfig {
-                bin_name: config.bin_name.clone(),
-                app_path: config.app_path.clone(),
-                version: upstream_version,
-                user_id: config.user_id.clone(),
-                user_secret: config.user_secret.clone(),
-            };
-            save_app_config_to_local(&app_store, &app_config)
-                .expect("Failed to save app configuration.");
-
-            config.has_app_been_installed = true;
-            config.app_version = upstream_version;
-            save_launcher_config_to_local(&launcher_store, &config)
-                .expect("Failed to save launcher configuration.");
-
-            needs_start = true;
-            true
-        }
-        true => {
-            let mut app_config = app_config_result.expect("Failed to get app configuration.");
-
-            if app_config.version < upstream_version {
-                info!("Attempting to just stop service for update (ignoring failures)...");
-                let _ = stop_service(manager);
-                // let _ = uninstall_service();
-
-                info!("New version available, updating app...");
-                pull_from_upstream_and_install_binary_to_local(&config)
-                    .await
-                    .expect("Failed to install binary from upstream.");
-                app_config.version = upstream_version;
-
-                save_app_config_to_local(&app_store, &app_config)
-                    .expect("Failed to save updated app configuration.");
-                config.app_version = upstream_version;
-                save_launcher_config_to_local(&launcher_store, &config)
-                    .expect("Failed to save updated launcher configuration.");
-                needs_start = true;
-            } else {
-                info!("App is up to date. No launch required");
-                needs_start = false;
-            }
-
-            false
-        }
+    debug!("Saving app configuration...");
+    let app_config = AppConfig {
+        bin_name: config.bin_name.clone(),
+        app_path: config.app_path.clone(),
+        version: upstream_version,
+        user_id: config.user_id.clone(),
+        user_secret: config.user_secret.clone(),
     };
+    save_app_config_to_local(app_store, &app_config)?;
 
-    info!("Launching app...");
-    let app_config =
-        get_config_from_app_local(&app_store).expect("Failed to get app configuration for launch.");
+    config.has_app_been_installed = true;
+    config.app_version = upstream_version;
+    save_launcher_config_to_local(launcher_store, config)?;
 
-    if needs_install {
-        install_service(manager, &app_config).unwrap();
-    }
+    Ok(())
+}
 
-    if needs_start {
-        info!("Start requested, starting service...");
-        start_service(manager).expect("Failed to start service.");
-    } else {
-        info!("No start requested, skipping service start.");
-    }
+pub async fn install_in_place(
+    config: &mut LauncherConfig,
+    manager: &dyn ServiceManager,
+    launcher_store: &LocalStore,
+    app_store: &LocalStore,
+    upstream_version: SemVer,
+    app_config: &mut AppConfig,
+) -> HandlerResult<()> {
+    info!("Attempting to just stop service for update (ignoring failures)...");
+    let _ = stop_service(manager);
 
-    panic!();
+    info!("New version available, updating app...");
+    pull_from_upstream_and_install_binary_to_local(config).await?;
+    app_config.version = upstream_version;
+
+    save_app_config_to_local(app_store, app_config)?;
+    config.app_version = upstream_version;
+    save_launcher_config_to_local(launcher_store, config)?;
+
+    Ok(())
 }
 
 fn get_service_label() -> ServiceLabel {
@@ -266,9 +417,7 @@ fn stop_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
 
     // Stop our service using the underlying service management platform
     info!("Stopping service...");
-    if let Err(e) = manager.stop(ServiceStopCtx {
-        label: label.clone(),
-    }) {
+    if let Err(e) = manager.stop(ServiceStopCtx { label }) {
         error!("Failed to stop service: {}", e);
         return Err(HandlerError::from(e));
     }
@@ -281,9 +430,7 @@ fn start_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
 
     // Stop our service using the underlying service management platform
     info!("Starting service...");
-    if let Err(e) = manager.start(ServiceStartCtx {
-        label: label.clone(),
-    }) {
+    if let Err(e) = manager.start(ServiceStartCtx { label }) {
         error!("Failed to start service: {}", e);
         return Err(HandlerError::from(e));
     }
@@ -300,7 +447,7 @@ fn install_service(manager: &dyn ServiceManager, config: &AppConfig) -> HandlerR
     // Install our service using the underlying service management platform
     info!("Installing service...");
     if let Err(e) = manager.install(ServiceInstallCtx {
-        label: label.clone(),
+        label,
         program: config.get_bin_path(),
         args: vec![],
         contents: None,
@@ -328,8 +475,8 @@ fn uninstall_service(manager: &dyn ServiceManager) -> HandlerResult<()> {
 }
 
 fn get_secrets_from_env() -> (String, String) {
-    // let user_id = std::env::var("ITX_USER_ID").expect("ITX_USER_ID not set");
-    // let user_secret = std::env::var("ITX_USER_SECRET").expect("ITX_USER_SECRET not set");
+    let _user_id = std::env::var("ITX_USER_ID").unwrap_or("".to_string());
+    let _user_secret = std::env::var("ITX_USER_SECRET").unwrap_or("".to_string());
     let user_id = "ef037a4c-97ca-4571-ab5d-1d36505889c4".to_string();
     let user_secret ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZWNyZXQiOiJOb25lIiwidXNlcl9pZCI6ImVmMDM3YTRjLTk3Y2EtNDU3MS1hYjVkLTFkMzY1MDU4ODljNCIsImV4cCI6MTcxMDcyMDcxMn0.91RmQlV9RCF3UJlzx6SOb-dx_-W7Fev5KcNZ_bZO5RA".to_string();
 
