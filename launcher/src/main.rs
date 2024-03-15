@@ -3,6 +3,10 @@
 #![feature(build_hasher_simple_hash_one)]
 
 use models::HandlerResult;
+use requests::{
+    upstream_requests::{fetch_bin, fetch_version, BinData},
+    ApiConfig,
+};
 use serde::{Deserialize, Serialize};
 
 pub fn main() {}
@@ -30,6 +34,7 @@ impl SemVer {
 
 #[derive(Debug, Serialize, PartialEq, Eq, Deserialize, Clone, Default)]
 pub struct AppConfig {
+    pub app_path: String,
     pub version: SemVer,
     pub user_id: String,
     pub user_secret: String,
@@ -48,20 +53,22 @@ pub fn get_current_app_version() -> String {
     unimplemented!()
 }
 
-pub fn get_upstream_app_version() -> String {
-    unimplemented!()
+pub async fn get_upstream_app_version() -> HandlerResult<SemVer> {
+    let config = ApiConfig::default();
+    fetch_version(&config).await
 }
 
-pub fn get_upstream_endpoint() -> String {
-    unimplemented!()
+pub async fn get_binary_from_upstream() -> HandlerResult<BinData> {
+    let config = ApiConfig::default();
+    fetch_bin(&config).await
 }
 
-pub fn get_binary_from_upstream() -> Result<(), ()> {
-    unimplemented!()
-}
-
-pub fn install_binary_to_local() -> Result<(), ()> {
-    unimplemented!()
+pub async fn install_binary_to_local(config: &LauncherConfig) -> HandlerResult<()> {
+    let file_name = &config.app_path;
+    let mut file = std::fs::File::create(file_name)?;
+    let mut content = get_binary_from_upstream().await?;
+    std::io::copy(&mut content, &mut file)?;
+    Ok(())
 }
 
 pub fn get_config_from_launcher_local() -> Result<(), ()> {
@@ -536,6 +543,49 @@ pub mod requests {
                 // host: "https://api.itx-app.com".to_string(),
                 // port: None,
             }
+        }
+    }
+
+    pub mod upstream_requests {
+        use std::io::Cursor;
+
+        use futures::future::BoxFuture;
+        use log::info;
+
+        pub type BinData = Cursor<bytes::Bytes>;
+
+        use crate::{
+            models::HandlerResult,
+            requests::{get_client, handle_response, ApiResult},
+            SemVer,
+        };
+
+        use super::ApiConfig;
+
+        pub async fn fetch_version(config: &ApiConfig) -> HandlerResult<SemVer> {
+            let url = config.with_path("/upstream/version");
+            let response = get_client().get(url).send().await?;
+
+            let status = response.status();
+            info!("Response status for fetch version: {}", status);
+
+            let bind = |response: reqwest::Response| -> BoxFuture<'static, ApiResult<SemVer>> {
+                Box::pin(async move { Ok(response.json().await?) })
+            };
+            handle_response(response, bind).await
+        }
+
+        pub async fn fetch_bin(config: &ApiConfig) -> HandlerResult<BinData> {
+            let url = config.with_path("/upstream/bin");
+            let response = get_client().get(url).send().await?;
+
+            let status = response.status();
+            info!("Response status for fetch bin: {}", status);
+
+            let bind = |response: reqwest::Response| -> BoxFuture<'static, ApiResult<BinData>> {
+                Box::pin(async move { Ok(Cursor::new(response.bytes().await?)) })
+            };
+            handle_response(response, bind).await
         }
     }
 
